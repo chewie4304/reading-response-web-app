@@ -15,35 +15,109 @@
     </header>
 
     <main>
-        <!-- Student Submission Section -->
+        <!-- Student Submission View -->
         <section id="student-view" class="view-section">
-            <h2>Submit Your Reading Response</h2>
+            <h2>Submit Weekly Reading Response</h2>
+            <p class="subtitle">Complete two prompt responses for your assigned grade level.</p>
+
             <form id="response-form">
-                <label for="student-name">Student Name</label>
-                <input type="text" id="student-name" required placeholder="Enter your full name">
+                <!-- Student Selection -->
+                <div class="form-group">
+                    <label for="student-name">Student Name</label>
+                    <input type="text" id="student-name" list="student-list" placeholder="Start typing your name..."
+                        required autocomplete="off">
+                    <datalist id="student-list"></datalist>
+                    <span id="grade-badge" class="badge hidden"></span>
+                </div>
 
-                <label for="book-title">Book Title</label>
-                <input type="text" id="book-title" required placeholder="Title of the book">
+                <!-- Book Details -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="book-title">Book Title</label>
+                        <input type="text" id="book-title" placeholder="Title of the book" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="book-author">Author</label>
+                        <input type="text" id="book-author" placeholder="Author name" required>
+                    </div>
+                </div>
 
-                <label for="book-author">Author</label>
-                <input type="text" id="book-author" required placeholder="Author name">
+                <hr class="divider">
 
-                <label for="response-text">Your Response</label>
-                <textarea id="response-text" rows="5" required placeholder="Write your response here..."></textarea>
+                <!-- Response 1 -->
+                <div class="prompt-block">
+                    <h3>Response 1</h3>
+                    <div class="form-group">
+                        <label for="prompt1-select">Select First Prompt</label>
+                        <select id="prompt1-select" required disabled>
+                            <option value="">-- Select your student name first --</option>
+                        </select>
+                    </div>
+                    <p id="prompt1-text" class="prompt-description hidden"></p>
+                    <div class="form-group">
+                        <textarea id="response1-text" rows="4" placeholder="Write your response to Prompt 1 here..."
+                            required disabled></textarea>
+                    </div>
+                </div>
 
-                <button type="submit" id="submit-btn">Submit Response</button>
+                <hr class="divider">
+
+                <!-- Response 2 -->
+                <div class="prompt-block">
+                    <h3>Response 2</h3>
+                    <div class="form-group">
+                        <label for="prompt2-select">Select Second Prompt</label>
+                        <select id="prompt2-select" required disabled>
+                            <option value="">-- Select your student name first --</option>
+                        </select>
+                    </div>
+                    <p id="prompt2-text" class="prompt-description hidden"></p>
+                    <div class="form-group">
+                        <textarea id="response2-text" rows="4" placeholder="Write your response to Prompt 2 here..."
+                            required disabled></textarea>
+                    </div>
+                </div>
+
+                <button type="submit" id="submit-btn" disabled>Submit Weekly Responses</button>
             </form>
-            <div id="status-message" class="hidden"></div>
+            <div id="status-message" class="status-box hidden"></div>
         </section>
 
-        <!-- Protected Teacher Portal Section -->
+        <!-- Protected Teacher Dashboard View -->
         <section id="teacher-view" class="view-section hidden">
             <div class="teacher-header">
                 <h2>Teacher Dashboard</h2>
-                <button id="logout-btn">Logout</button>
+                <div>
+                    <button id="add-student-toggle-btn" class="secondary-btn">+ Add Student</button>
+                    <button id="logout-btn">Logout</button>
+                </div>
             </div>
-            <div id="responses-list">
-                <p>Loading responses from Google Sheets...</p>
+
+            <!-- Add Student Form (Collapsible) -->
+            <div id="add-student-panel" class="panel hidden">
+                <h3>Add New Student to Roster</h3>
+                <form id="add-student-form">
+                    <div class="form-row">
+                        <input type="text" id="new-student-name" placeholder="Student Name" required>
+                        <select id="new-student-grade" required>
+                            <option value="">Select Grade</option>
+                            <option value="6th">6th Grade</option>
+                            <option value="7th">7th Grade</option>
+                            <option value="8th">8th Grade</option>
+                        </select>
+                        <button type="submit">Add Student</button>
+                    </div>
+                </form>
+                <div id="add-student-status" class="status-box hidden"></div>
+            </div>
+
+            <!-- Responses List -->
+            <div class="dashboard-controls">
+                <h3>Submitted Responses</h3>
+                <button id="refresh-responses-btn" class="secondary-btn">↻ Refresh</button>
+            </div>
+            <div id="responses-container" class="responses-list">
+                <p>Click login to load responses...</p>
             </div>
         </section>
     </main>
@@ -51,12 +125,12 @@
     <!-- Passcode Modal -->
     <div id="passcode-modal" class="modal hidden">
         <div class="modal-content">
-            <h3>Teacher Verification</h3>
-            <p>Enter passcode to access dashboard:</p>
+            <h3>Teacher Access</h3>
+            <p>Enter secret passcode from your Google Sheet:</p>
             <input type="password" id="passcode-input" placeholder="Passcode">
             <div class="modal-actions">
-                <button id="verify-passcode-btn">Access</button>
-                <button id="close-modal-btn">Cancel</button>
+                <button id="verify-passcode-btn">Access Dashboard</button>
+                <button id="close-modal-btn" class="secondary-btn">Cancel</button>
             </div>
             <p id="modal-error" class="error-text hidden">Incorrect passcode.</p>
         </div>
