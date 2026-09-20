@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Reading Responses</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1>Reading Response Portal</h1>
+        <button id="teacher-access-btn">Teacher Login</button>
+    </header>
+
+    <main>
+        <!-- Student Submission Section -->
+        <section id="student-view" class="view-section">
+            <h2>Submit Your Reading Response</h2>
+            <form id="response-form">
+                <label for="student-name">Student Name</label>
+                <input type="text" id="student-name" required placeholder="Enter your full name">
+
+                <label for="book-title">Book Title</label>
+                <input type="text" id="book-title" required placeholder="Title of the book">
+
+                <label for="book-author">Author</label>
+                <input type="text" id="book-author" required placeholder="Author name">
+
+                <label for="response-text">Your Response</label>
+                <textarea id="response-text" rows="5" required placeholder="Write your response here..."></textarea>
+
+                <button type="submit" id="submit-btn">Submit Response</button>
+            </form>
+            <div id="status-message" class="hidden"></div>
+        </section>
+
+        <!-- Protected Teacher Portal Section -->
+        <section id="teacher-view" class="view-section hidden">
+            <div class="teacher-header">
+                <h2>Teacher Dashboard</h2>
+                <button id="logout-btn">Logout</button>
+            </div>
+            <div id="responses-list">
+                <p>Loading responses from Google Sheets...</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Passcode Modal -->
+    <div id="passcode-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Teacher Verification</h3>
+            <p>Enter passcode to access dashboard:</p>
+            <input type="password" id="passcode-input" placeholder="Passcode">
+            <div class="modal-actions">
+                <button id="verify-passcode-btn">Access</button>
+                <button id="close-modal-btn">Cancel</button>
+            </div>
+            <p id="modal-error" class="error-text hidden">Incorrect passcode.</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
