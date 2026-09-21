@@ -5,7 +5,12 @@ All notable changes to the Reading Response Web App will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# [Unreleased]
+## [Unreleased]
+
+### Changed
+- Replaced native `<datalist>` autocomplete with a custom type-ahead search box to prevent accidental selection of incorrect student names.
+- Cleaned student search suggestions to display clean student names without trailing grade tags or commas.
+- Refactored student name parsing and data extraction using `.at()` to handle array indexing safely.
 
 ### Added
 - Filter responses by grade level on Teacher Dashboard.

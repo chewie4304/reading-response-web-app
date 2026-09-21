@@ -35,15 +35,91 @@ async function loadInitialData() {
     }
 }
 
-// Populate <datalist> for student name autocomplete
-function populateStudentDatalist() {
-    const datalist = document.getElementById("student-list");
-    datalist.innerHTML = "";
-    studentsData.forEach(student => {
-        const opt = document.createElement("option");
-        opt.value = student.name;
-        datalist.appendChild(opt);
+// Handle Student Search & Matching
+function handleStudentNameChange(e) {
+    const typedValue = e.target.value.trim().toLowerCase();
+    const suggestionsBox = document.getElementById("student-suggestions");
+
+    if (typedValue.length < 2) {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.classList.add("hidden");
+        resetStudentSelection();
+        return;
+    }
+
+    // Filter roster for matching names
+    const matches = studentsData.filter(s => {
+        const rawName = String(s.name || "");
+        const cleanName = rawName.split(",").at(0).trim().toLowerCase();
+        return cleanName.includes(typedValue);
     });
+
+    if (matches.length > 0) {
+        suggestionsBox.innerHTML = "";
+        matches.forEach(student => {
+            const rawName = String(student.name || "");
+            const cleanName = rawName.split(",").at(0).trim();
+
+            const item = document.createElement("div");
+            item.className = "suggestion-item";
+            item.textContent = cleanName;
+            item.addEventListener("click", () => selectStudent(student));
+            suggestionsBox.appendChild(item);
+        });
+        suggestionsBox.classList.remove("hidden");
+    } else {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.classList.add("hidden");
+        resetStudentSelection();
+    }
+}
+
+// Lock in student selection when clicked
+function selectStudent(student) {
+    const nameInput = document.getElementById("student-name");
+    const suggestionsBox = document.getElementById("student-suggestions");
+    const rawName = String(student.name || "");
+    const cleanName = rawName.split(",").at(0).trim();
+
+    nameInput.value = cleanName;
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.classList.add("hidden");
+
+    currentSelectedStudent = Object.assign({}, student, {
+        name: cleanName
+    });
+
+    const gradeBadge = document.getElementById("grade-badge");
+    gradeBadge.textContent = `${student.grade} Grade`;
+    gradeBadge.classList.remove("hidden");
+
+    // Enable prompt options and fields
+    document.getElementById("prompt1-select").disabled = false;
+    document.getElementById("prompt2-select").disabled = false;
+    document.getElementById("response1-text").disabled = false;
+    document.getElementById("response2-text").disabled = false;
+    document.getElementById("submit-btn").disabled = false;
+
+    populateGradePrompts(student.grade);
+}
+
+// Reset form fields if name is cleared
+function resetStudentSelection() {
+    currentSelectedStudent = null;
+    document.getElementById("grade-badge").classList.add("hidden");
+
+    const p1Select = document.getElementById("prompt1-select");
+    const p2Select = document.getElementById("prompt2-select");
+    p1Select.disabled = true;
+    p2Select.disabled = true;
+    document.getElementById("response1-text").disabled = true;
+    document.getElementById("response2-text").disabled = true;
+    document.getElementById("submit-btn").disabled = true;
+
+    p1Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
+    p2Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
+    document.getElementById("prompt1-text").classList.add("hidden");
+    document.getElementById("prompt2-text").classList.add("hidden");
 }
 
 // Bind UI Interactions
@@ -79,47 +155,6 @@ function bindEvents() {
         document.getElementById("add-student-panel").classList.toggle("hidden");
     });
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
-}
-
-// Handle Student Name Selection & Grade Matching
-function handleStudentNameChange(e) {
-    const typedName = e.target.value.trim();
-    const matched = studentsData.find(s => s.name.toLowerCase() === typedName.toLowerCase());
-
-    const gradeBadge = document.getElementById("grade-badge");
-    const p1Select = document.getElementById("prompt1-select");
-    const p2Select = document.getElementById("prompt2-select");
-    const r1Text = document.getElementById("response1-text");
-    const r2Text = document.getElementById("response2-text");
-    const submitBtn = document.getElementById("submit-btn");
-
-    if (matched) {
-        currentSelectedStudent = matched;
-        gradeBadge.textContent = `${matched.grade} Grade`;
-        gradeBadge.classList.remove("hidden");
-
-        // Enable prompt selects and response fields
-        p1Select.disabled = false;
-        p2Select.disabled = false;
-        r1Text.disabled = false;
-        r2Text.disabled = false;
-        submitBtn.disabled = false;
-
-        populateGradePrompts(matched.grade);
-    } else {
-        currentSelectedStudent = null;
-        gradeBadge.classList.add("hidden");
-        p1Select.disabled = true;
-        p2Select.disabled = true;
-        r1Text.disabled = true;
-        r2Text.disabled = true;
-        submitBtn.disabled = true;
-
-        p1Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
-        p2Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
-        document.getElementById("prompt1-text").classList.add("hidden");
-        document.getElementById("prompt2-text").classList.add("hidden");
-    }
 }
 
 // Populate prompts filtered by student grade level
