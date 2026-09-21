@@ -191,8 +191,17 @@ button:disabled {
 
 .card-header {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 0.6rem;
     font-size: 1.05rem;
+}
+
+.card-header .date {
+    margin-right: auto;
+    padding-left: 0.6rem;
+    color: var(--muted);
+    font-size: 0.9rem;
 }
 
 .book-info {
@@ -211,6 +220,116 @@ button:disabled {
     margin: 0.25rem 0 0 0;
     white-space: pre-wrap;
 }
+
+.rubric-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+}
+
+.rubric-btn {
+    position: relative;
+    flex: 1;
+    padding: 0.4rem 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.rubric-btn:hover {
+    background: #f0f0f0;
+}
+
+.rubric-btn.selected {
+    background: var(--primary, #2563eb);
+    border-color: var(--primary, #2563eb);
+    color: white;
+}
+
+.rubric-btn.selected:hover {
+    background: var(--primary-hover, #1d4ed8);
+}
+
+.rubric-btn[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    background: var(--text);
+    color: white;
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: normal;
+    text-align: left;
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+.delete-response-btn {
+    background: none;
+    border: 1px solid var(--error);
+    color: var(--error);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.delete-response-btn:hover:not(:disabled) {
+    background: var(--error);
+    color: white;
+}
+
+.delete-response-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.comment-block {
+    margin-top: 0.6rem;
+}
+
+.comment-block label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+}
+
+.comment-textarea {
+    width: 100%;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.save-comment-btn {
+    margin-top: 0.4rem;
+}
+
+.comment-saved-msg {
+    margin-left: 0.5rem;
+    color: var(--success, #16a34a);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
 
 /* Modal */
 .modal {

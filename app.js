@@ -4,6 +4,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyzv-2a7duFRLcbHR14jDW0
 // Global App State
 let studentsData = [];
 let promptsData = [];
+let recentSubmissionsData = [];
+let cooldownDays = 14;
 let currentSelectedStudent = null;
 let activePasscode = "";
 let currentMatches = new Array();
@@ -27,19 +29,19 @@ async function loadInitialData() {
         const json = await res.json();
 
         if (json.success) {
-            // API returns students as { name: [fullName, grade] } and prompts as
-            // { id: [promptId, grade, standard, title, text], ... }; normalize to flat objects.
             studentsData = (json.students || new Array()).map(s => ({
-                name: String(s.name?.at(0) || ""),
-                grade: String(s.name?.at(1) || "")
+                name: String(s.name || ""),
+                grade: String(s.grade || "")
             }));
             promptsData = (json.prompts || new Array()).map(p => ({
-                id: p.id?.at(0) || "",
-                grade: String(p.id?.at(1) || ""),
-                standard: p.standard || p.id?.at(2) || "",
-                title: p.title || p.id?.at(3) || "",
-                text: p.id?.at(4) || ""
+                id: p.id || "",
+                grade: String(p.grade || ""),
+                standard: p.standard || "",
+                title: p.title || "",
+                text: p.text || ""
             }));
+            recentSubmissionsData = json.recentSubmissions || new Array();
+            cooldownDays = Number(json.cooldownDays) || 14;
         } else {
             showStatus("Failed to load initial data from Google Sheets.", "error");
         }
@@ -192,17 +194,53 @@ function populateGradePrompts(grade) {
     const safeGrade = String(grade).toLowerCase().trim();
 
     const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().trim() === safeGrade);
+    const restrictedStandards = currentSelectedStudent ? getRestrictedStandards(currentSelectedStudent.name) : new Map();
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
     let optionsHTML = `<option value="">-- Select a prompt --</option>`;
 
     filteredPrompts.forEach(p => {
-        optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
+        const restrictedUntil = restrictedStandards.get(p.standard);
+        if (restrictedUntil) {
+            const untilText = restrictedUntil.toLocaleDateString();
+            optionsHTML += `<option value="${p.title}" data-id="${p.id}" data-restricted="true" disabled>${p.standard}: ${p.title} (locked until ${untilText})</option>`;
+        } else {
+            optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
+        }
     });
 
     p1Select.innerHTML = optionsHTML;
     p2Select.innerHTML = optionsHTML;
+}
+
+// Determine which prompt standards are still in cooldown for this student
+function getRestrictedStandards(studentName) {
+    const restricted = new Map();
+    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    recentSubmissionsData.forEach(sub => {
+        if (sub.studentName !== studentName) return;
+
+        [sub.prompt1Title, sub.prompt2Title].forEach(title => {
+            const promptObj = promptsData.find(p => p.title === title);
+            if (!promptObj) return;
+
+            const submittedAt = new Date(sub.timestamp).getTime();
+            if (isNaN(submittedAt)) return;
+
+            const nextEligible = new Date(submittedAt + cooldownMs);
+            if (nextEligible.getTime() <= now) return;
+
+            const existing = restricted.get(promptObj.standard);
+            if (!existing || nextEligible > existing) {
+                restricted.set(promptObj.standard, nextEligible);
+            }
+        });
+    });
+
+    return restricted;
 }
 
 // Reset selection state
@@ -249,6 +287,7 @@ function bindEvents() {
     document.getElementById("verify-passcode-btn").addEventListener("click", handleTeacherLogin);
     document.getElementById("logout-btn").addEventListener("click", handleLogout);
     document.getElementById("refresh-responses-btn").addEventListener("click", loadTeacherResponses);
+    document.getElementById("responses-container").addEventListener("click", handleResponsesContainerClick);
 
     // Add Student toggle & submit
     document.getElementById("add-student-toggle-btn").addEventListener("click", () => {
@@ -263,6 +302,7 @@ function handlePromptSelect(promptNum) {
     const p2Select = document.getElementById("prompt2-select");
 
     const selectedSelect = promptNum === 1 ? p1Select : p2Select;
+    const siblingSelect = promptNum === 1 ? p2Select : p1Select;
     const targetDesc = document.getElementById(`prompt${promptNum}-text`);
 
     const selectedTitle = selectedSelect.value;
@@ -275,39 +315,39 @@ function handlePromptSelect(promptNum) {
         targetDesc.classList.add("hidden");
     }
 
-    // Prevent selecting same prompt in both dropdowns
-    if (promptNum === 1 && p2Select.value === p1Select.value && p1Select.value !== "") {
-        p2Select.value = "";
-        document.getElementById("prompt2-text").classList.add("hidden");
+    // Block the sibling dropdown from selecting the same prompt in this submission
+    Array.from(siblingSelect.options).forEach(opt => {
+        if (opt.value === "") return;
+        opt.disabled = opt.dataset.restricted === "true" || (selectedTitle !== "" && opt.value === selectedTitle);
+    });
+    if (siblingSelect.value === selectedTitle && selectedTitle !== "") {
+        siblingSelect.value = "";
+        document.getElementById(`prompt${promptNum === 1 ? 2 : 1}-text`).classList.add("hidden");
     }
 }
 
-// Submit Response Form to Google Apps Script
+// Submit Response Form
 async function handleFormSubmit(e) {
     e.preventDefault();
-
     if (!currentSelectedStudent) {
         showStatus("Please select a valid student from the roster.", "error");
         return;
     }
 
-    const p1Value = document.getElementById("prompt1-select").value;
-    const p2Value = document.getElementById("prompt2-select").value;
+    const p1Select = document.getElementById("prompt1-select");
+    const p2Select = document.getElementById("prompt2-select");
 
-    if (p1Value === p2Value) {
-        showStatus("Please choose two different prompts for your response.", "error");
-        return;
-    }
+    const p1Title = p1Select.value;
+    const p2Title = p2Select.value;
 
     const payload = {
-        action: "submitResponse",
-        studentName: currentSelectedStudent.name,
-        gradeLevel: currentSelectedStudent.grade,
+        studentName: currentSelectedStudent.name || "",
+        gradeLevel: currentSelectedStudent.grade || "",
         bookTitle: document.getElementById("book-title").value.trim(),
         bookAuthor: document.getElementById("book-author").value.trim(),
-        prompt1Title: p1Value,
+        prompt1Title: p1Title,
         response1: document.getElementById("response1-text").value.trim(),
-        prompt2Title: p2Value,
+        prompt2Title: p2Title,
         response2: document.getElementById("response2-text").value.trim()
     };
 
@@ -322,8 +362,15 @@ async function handleFormSubmit(e) {
 
         if (json.success) {
             showStatus("Response submitted successfully! Great job!", "success");
+            // Reflect this submission locally so the cooldown applies immediately, without waiting on a refetch
+            recentSubmissionsData.push({
+                studentName: payload.studentName,
+                prompt1Title: payload.prompt1Title,
+                prompt2Title: payload.prompt2Title,
+                timestamp: new Date().toISOString()
+            });
             document.getElementById("response-form").reset();
-            handleStudentNameChange({ target: { value: "" } });
+            resetStudentSelection();
         } else {
             showStatus(`Submission error: ${json.message}`, "error");
         }
@@ -385,37 +432,213 @@ async function loadTeacherResponses() {
     }
 }
 
+// Reading Response Rubric (6-10 point scale)
+const RUBRIC = [
+    { score: 6, label: "Incomplete / Off-Topic", desc: "Misses the point of the prompt entirely, is completely off-topic, or is so short it doesn't show any real effort or reading." },
+    { score: 7, label: "Minimal Effort", desc: "Barely answers the question. Very short, missing key details, and lacks any text support. Feels rushed." },
+    { score: 8, label: "Developing", desc: "Answers the prompt, but the response is a bit basic or brief. Missing strong text evidence or relies on vague summaries instead of specific book details." },
+    { score: 9, label: "Proficient", desc: "Answers the prompt correctly and clearly. Includes good examples or details from the book, though maybe not quite as detailed as a 10. Shows solid understanding." },
+    { score: 10, label: "Outstanding", desc: "Fully answers all parts of the prompt with deep thought. Uses strong, specific text evidence, quotes, or examples to back up the answer. Shows exceptional effort and high-quality writing." }
+];
+
+function renderRubricRow(responseId, promptNum, currentScore) {
+    const buttons = RUBRIC.map(r => {
+        const isSelected = Number(currentScore) === r.score;
+        return `<button type="button" class="rubric-btn${isSelected ? " selected" : ""}" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-score="${r.score}" data-tooltip="${escapeHtml(r.label)}: ${escapeHtml(r.desc)}">${r.score}</button>`;
+    }).join("");
+    return `<div class="rubric-row">${buttons}</div>`;
+}
+
+function renderCommentBlock(responseId, promptNum, currentComment) {
+    return `<div class="comment-block">
+      <label>Teacher Comment</label>
+      <textarea class="comment-textarea" rows="2" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" placeholder="Add feedback for this response...">${escapeHtml(currentComment || "")}</textarea>
+      <button type="button" class="secondary-btn save-comment-btn" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}">Save Comment</button>
+      <span class="comment-saved-msg hidden">Saved!</span>
+    </div>`;
+}
+
+// Render Teacher Dashboard Cards
 function renderResponses(responses) {
     const container = document.getElementById("responses-container");
-    if (responses.length === 0) {
+
+    if (!responses || responses.length === 0) {
         container.innerHTML = "<p>No responses submitted yet.</p>";
         return;
     }
 
     container.innerHTML = "";
-    responses.reverse().forEach(resp => {
+
+    responses.slice().reverse().forEach(resp => {
         const card = document.createElement("div");
         card.className = "response-card";
 
-        const formattedDate = resp.timestamp ? new Date(resp.timestamp).toLocaleDateString() : "N/A";
+        let formattedDate = "N/A";
+        if (resp.timestamp) {
+            const parsed = new Date(resp.timestamp);
+            formattedDate = !isNaN(parsed.getTime())
+                ? parsed.toLocaleDateString()
+                : String(resp.timestamp).split("T").at(0);
+        }
+
+        // Falls back to the raw timestamp when the sheet has no dedicated row id
+        const responseId = resp.id || resp.timestamp || "";
+        const sName = resp.studentName || "Unknown Student";
+        const gLevel = resp.gradeLevel ? ` (${resp.gradeLevel})` : "";
+        const bTitle = resp.bookTitle || "Untitled Book";
+        const bAuthor = resp.bookAuthor ? ` by ${resp.bookAuthor}` : "";
+
+        const p1Title = resp.prompt1Title || "Prompt 1";
+        const r1Text = resp.response1 || "No response provided.";
+
+        const p2Title = resp.prompt2Title || "Prompt 2";
+        const r2Text = resp.response2 || "No response provided.";
 
         card.innerHTML = `
       <div class="card-header">
-        <strong>${escapeHtml(resp.studentName)} (${escapeHtml(resp.gradeLevel)})</strong>
-        <span class="date">${formattedDate}</span>
+        <strong>${escapeHtml(sName)}${escapeHtml(gLevel)}</strong>
+        <span class="date">${escapeHtml(formattedDate)}</span>
+        <button type="button" class="delete-response-btn" data-response-id="${escapeHtml(responseId)}">🗑 Delete</button>
       </div>
-      <p class="book-info">📖 <em>${escapeHtml(resp.bookTitle)}</em> by ${escapeHtml(resp.bookAuthor)}</p>
+      <p class="book-info">📖 <em>${escapeHtml(bTitle)}</em>${escapeHtml(bAuthor)}</p>
       <div class="resp-block">
-        <strong>Prompt 1: ${escapeHtml(resp.prompt1Title)}</strong>
-        <p>${escapeHtml(resp.response1)}</p>
+        <strong>${escapeHtml(p1Title)}</strong>
+        <p>${escapeHtml(r1Text)}</p>
+        ${renderRubricRow(responseId, 1, resp.score1)}
+        ${renderCommentBlock(responseId, 1, resp.comment1)}
       </div>
       <div class="resp-block">
-        <strong>Prompt 2: ${escapeHtml(resp.prompt2Title)}</strong>
-        <p>${escapeHtml(resp.response2)}</p>
+        <strong>${escapeHtml(p2Title)}</strong>
+        <p>${escapeHtml(r2Text)}</p>
+        ${renderRubricRow(responseId, 2, resp.score2)}
+        ${renderCommentBlock(responseId, 2, resp.comment2)}
       </div>
     `;
+
         container.appendChild(card);
     });
+}
+
+// Route clicks within the responses list to the rubric or delete handlers
+function handleResponsesContainerClick(e) {
+    if (e.target.closest(".rubric-btn")) {
+        handleRubricClick(e);
+    } else if (e.target.closest(".delete-response-btn")) {
+        handleDeleteResponse(e);
+    } else if (e.target.closest(".save-comment-btn")) {
+        handleSaveComment(e);
+    }
+}
+
+// Save a rubric score for a single prompt response (optimistic UI, reverts on failure)
+async function handleRubricClick(e) {
+    const btn = e.target.closest(".rubric-btn");
+    if (!btn || btn.classList.contains("selected")) return;
+
+    const responseId = btn.dataset.responseId;
+    const promptNum = btn.dataset.promptNum;
+    const score = btn.dataset.score;
+    const row = btn.parentElement;
+    const siblingButtons = Array.from(row.querySelectorAll(".rubric-btn"));
+    const previousSelected = siblingButtons.find(b => b.classList.contains("selected"));
+
+    siblingButtons.forEach(b => b.classList.toggle("selected", b === btn));
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "scoreResponse",
+                passcode: activePasscode,
+                responseId,
+                promptNum: Number(promptNum),
+                score: Number(score)
+            })
+        });
+        const json = await res.json();
+
+        if (!json.success) {
+            siblingButtons.forEach(b => b.classList.toggle("selected", b === previousSelected));
+            alert(`Failed to save score: ${json.message || "Unknown error"}`);
+        }
+    } catch (err) {
+        siblingButtons.forEach(b => b.classList.toggle("selected", b === previousSelected));
+        alert("Failed to save score. Check your connection.");
+    }
+}
+
+// Save a teacher comment for a single prompt response
+async function handleSaveComment(e) {
+    const btn = e.target.closest(".save-comment-btn");
+    if (!btn) return;
+
+    const responseId = btn.dataset.responseId;
+    const promptNum = btn.dataset.promptNum;
+    const block = btn.closest(".comment-block");
+    const textarea = block.querySelector(".comment-textarea");
+    const savedMsg = block.querySelector(".comment-saved-msg");
+    const comment = textarea.value.trim();
+
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "saveComment",
+                passcode: activePasscode,
+                responseId,
+                promptNum: Number(promptNum),
+                comment
+            })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            savedMsg.classList.remove("hidden");
+            setTimeout(() => savedMsg.classList.add("hidden"), 2000);
+        } else {
+            alert(`Failed to save comment: ${json.message || "Unknown error"}`);
+        }
+    } catch (err) {
+        alert("Failed to save comment. Check your connection.");
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Permanently delete a response card, both on screen and in the Google Sheet
+async function handleDeleteResponse(e) {
+    const btn = e.target.closest(".delete-response-btn");
+    if (!btn || btn.disabled) return;
+
+    if (!confirm("Delete this response permanently? This cannot be undone.")) return;
+
+    const responseId = btn.dataset.responseId;
+    const card = btn.closest(".response-card");
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "deleteResponse",
+                passcode: activePasscode,
+                responseId
+            })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            card.remove();
+        } else {
+            alert(`Failed to delete response: ${json.message || "Unknown error"}`);
+            btn.disabled = false;
+        }
+    } catch (err) {
+        alert("Failed to delete response. Check your connection.");
+        btn.disabled = false;
+    }
 }
 
 // Add New Student
