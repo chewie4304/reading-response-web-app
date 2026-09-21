@@ -55,7 +55,7 @@ function bindStudentNameEvents() {
     });
 }
 
-// Handle Type-Ahead Input
+// Handle Type-Ahead Input (Array & Object resilient)
 function handleStudentNameChange(e) {
     const typedValue = e.target.value.trim().toLowerCase();
     const suggestionsBox = document.getElementById("student-suggestions");
@@ -72,7 +72,12 @@ function handleStudentNameChange(e) {
 
     // Filter roster for matching names
     currentMatches = studentsData.filter(s => {
-        const rawName = String(s.name || "");
+        let rawName = "";
+        if (Array.isArray(s)) {
+            rawName = String(s.at(0) || "");
+        } else if (typeof s === "object" && s !== null) {
+            rawName = String(s.name || "");
+        }
         const cleanName = rawName.split(",").at(0).trim().toLowerCase();
         return cleanName.includes(typedValue);
     });
@@ -86,13 +91,18 @@ function handleStudentNameChange(e) {
     }
 }
 
-// Render Suggestions List with Highlight State
+// Render Suggestions List (Array & Object resilient)
 function renderSuggestions() {
     const suggestionsBox = document.getElementById("student-suggestions");
     suggestionsBox.innerHTML = "";
 
     currentMatches.forEach((student, idx) => {
-        const rawName = String(student.name || "");
+        let rawName = "";
+        if (Array.isArray(student)) {
+            rawName = String(student.at(0) || "");
+        } else if (typeof student === "object" && student !== null) {
+            rawName = String(student.name || "");
+        }
         const cleanName = rawName.split(",").at(0).trim();
 
         const item = document.createElement("div");
@@ -140,22 +150,42 @@ function handleStudentNameKeydown(e) {
 
 // Lock in student selection when clicked or tabbed
 function selectStudent(student) {
+    let rawName = "";
+    let rawGrade = "";
+
+    if (Array.isArray(student)) {
+        rawName = String(student.at(0) || "");
+        rawGrade = String(student.at(1) || "");
+    } else if (typeof student === "object" && student !== null) {
+        rawName = String(student.name || "");
+        rawGrade = String(student.grade || student.gradeLevel || "");
+    }
+
+    const cleanName = rawName.split(",").at(0).trim();
+    const cleanGrade = rawGrade.trim();
+
     const nameInput = document.getElementById("student-name");
     const suggestionsBox = document.getElementById("student-suggestions");
-    const rawName = String(student.name || "");
-    const cleanName = rawName.split(",").at(0).trim();
 
     nameInput.value = cleanName;
     suggestionsBox.innerHTML = "";
     suggestionsBox.classList.add("hidden");
 
-    currentSelectedStudent = Object.assign({}, student, {
-        name: cleanName
-    });
+    currentSelectedStudent = {
+        name: cleanName,
+        grade: cleanGrade
+    };
 
     const gradeBadge = document.getElementById("grade-badge");
-    gradeBadge.textContent = `${student.grade} Grade`;
-    gradeBadge.classList.remove("hidden");
+    if (cleanGrade) {
+        const displayGrade = cleanGrade.toLowerCase().includes("grade")
+            ? cleanGrade
+            : `${cleanGrade} Grade`;
+        gradeBadge.textContent = displayGrade;
+        gradeBadge.classList.remove("hidden");
+    } else {
+        gradeBadge.classList.add("hidden");
+    }
 
     // Enable prompt options and fields
     document.getElementById("prompt1-select").disabled = false;
@@ -164,7 +194,39 @@ function selectStudent(student) {
     document.getElementById("response2-text").disabled = false;
     document.getElementById("submit-btn").disabled = false;
 
-    populateGradePrompts(student.grade);
+    if (cleanGrade) {
+        populateGradePrompts(cleanGrade);
+    }
+}
+
+// Safely populate prompts for the selected grade (Array & Object resilient)
+function populateGradePrompts(grade) {
+    if (!grade) return;
+    const safeGrade = String(grade).toLowerCase().trim();
+
+    const filteredPrompts = promptsData.filter(p => {
+        let pGrade = "";
+        if (Array.isArray(p)) {
+            pGrade = String(p.at(1) || "");
+        } else if (typeof p === "object" && p !== null) {
+            pGrade = String(p.grade || p.gradeLevel || "");
+        }
+        return pGrade.toLowerCase().trim() === safeGrade;
+    });
+
+    const p1Select = document.getElementById("prompt1-select");
+    const p2Select = document.getElementById("prompt2-select");
+    let optionsHTML = `<option value="">-- Select a prompt --</option>`;
+
+    filteredPrompts.forEach(p => {
+        const title = Array.isArray(p) ? p.at(3) : p.title;
+        const std = Array.isArray(p) ? p.at(2) : p.standard;
+        const id = Array.isArray(p) ? p.at(0) : p.id;
+        optionsHTML += `<option value="${title}" data-id="${id}">${std}: ${title}</option>`;
+    });
+
+    p1Select.innerHTML = optionsHTML;
+    p2Select.innerHTML = optionsHTML;
 }
 
 // Reset selection state
@@ -217,22 +279,6 @@ function bindEvents() {
         document.getElementById("add-student-panel").classList.toggle("hidden");
     });
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
-}
-
-// Populate prompts filtered by student grade level
-function populateGradePrompts(grade) {
-    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase() === grade.toLowerCase());
-
-    const p1Select = document.getElementById("prompt1-select");
-    const p2Select = document.getElementById("prompt2-select");
-
-    let optionsHTML = `<option value="">-- Select a prompt --</option>`;
-    filteredPrompts.forEach(p => {
-        optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
-    });
-
-    p1Select.innerHTML = optionsHTML;
-    p2Select.innerHTML = optionsHTML;
 }
 
 // Update prompt text descriptions and prevent duplicate choices
