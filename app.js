@@ -27,9 +27,19 @@ async function loadInitialData() {
         const json = await res.json();
 
         if (json.success) {
-            studentsData = json.students || new Array();
-            promptsData = json.prompts || new Array();
-            // Data is now ready for type-ahead search without needing datalist population
+            // API returns students as { name: [fullName, grade] } and prompts as
+            // { id: [promptId, grade, standard, title, text], ... }; normalize to flat objects.
+            studentsData = (json.students || new Array()).map(s => ({
+                name: String(s.name?.at(0) || ""),
+                grade: String(s.name?.at(1) || "")
+            }));
+            promptsData = (json.prompts || new Array()).map(p => ({
+                id: p.id?.at(0) || "",
+                grade: String(p.id?.at(1) || ""),
+                standard: p.standard || p.id?.at(2) || "",
+                title: p.title || p.id?.at(3) || "",
+                text: p.id?.at(4) || ""
+            }));
         } else {
             showStatus("Failed to load initial data from Google Sheets.", "error");
         }
@@ -55,7 +65,7 @@ function bindStudentNameEvents() {
     });
 }
 
-// Handle Type-Ahead Input (Array & Object resilient)
+// Handle Type-Ahead Input
 function handleStudentNameChange(e) {
     const typedValue = e.target.value.trim().toLowerCase();
     const suggestionsBox = document.getElementById("student-suggestions");
@@ -72,13 +82,7 @@ function handleStudentNameChange(e) {
 
     // Filter roster for matching names
     currentMatches = studentsData.filter(s => {
-        let rawName = "";
-        if (Array.isArray(s)) {
-            rawName = String(s.at(0) || "");
-        } else if (typeof s === "object" && s !== null) {
-            rawName = String(s.name || "");
-        }
-        const cleanName = rawName.split(",").at(0).trim().toLowerCase();
+        const cleanName = s.name.split(",").at(0).trim().toLowerCase();
         return cleanName.includes(typedValue);
     });
 
@@ -91,19 +95,13 @@ function handleStudentNameChange(e) {
     }
 }
 
-// Render Suggestions List (Array & Object resilient)
+// Render Suggestions List with Highlight State
 function renderSuggestions() {
     const suggestionsBox = document.getElementById("student-suggestions");
     suggestionsBox.innerHTML = "";
 
     currentMatches.forEach((student, idx) => {
-        let rawName = "";
-        if (Array.isArray(student)) {
-            rawName = String(student.at(0) || "");
-        } else if (typeof student === "object" && student !== null) {
-            rawName = String(student.name || "");
-        }
-        const cleanName = rawName.split(",").at(0).trim();
+        const cleanName = student.name.split(",").at(0).trim();
 
         const item = document.createElement("div");
         item.className = idx === selectedIndex ? "suggestion-item active" : "suggestion-item";
@@ -150,19 +148,8 @@ function handleStudentNameKeydown(e) {
 
 // Lock in student selection when clicked or tabbed
 function selectStudent(student) {
-    let rawName = "";
-    let rawGrade = "";
-
-    if (Array.isArray(student)) {
-        rawName = String(student.at(0) || "");
-        rawGrade = String(student.at(1) || "");
-    } else if (typeof student === "object" && student !== null) {
-        rawName = String(student.name || "");
-        rawGrade = String(student.grade || student.gradeLevel || "");
-    }
-
-    const cleanName = rawName.split(",").at(0).trim();
-    const cleanGrade = rawGrade.trim();
+    const cleanName = student.name.split(",").at(0).trim();
+    const cleanGrade = student.grade.trim();
 
     const nameInput = document.getElementById("student-name");
     const suggestionsBox = document.getElementById("student-suggestions");
@@ -199,30 +186,19 @@ function selectStudent(student) {
     }
 }
 
-// Safely populate prompts for the selected grade (Array & Object resilient)
+// Populate prompts filtered by student grade level
 function populateGradePrompts(grade) {
     if (!grade) return;
     const safeGrade = String(grade).toLowerCase().trim();
 
-    const filteredPrompts = promptsData.filter(p => {
-        let pGrade = "";
-        if (Array.isArray(p)) {
-            pGrade = String(p.at(1) || "");
-        } else if (typeof p === "object" && p !== null) {
-            pGrade = String(p.grade || p.gradeLevel || "");
-        }
-        return pGrade.toLowerCase().trim() === safeGrade;
-    });
+    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().trim() === safeGrade);
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
     let optionsHTML = `<option value="">-- Select a prompt --</option>`;
 
     filteredPrompts.forEach(p => {
-        const title = Array.isArray(p) ? p.at(3) : p.title;
-        const std = Array.isArray(p) ? p.at(2) : p.standard;
-        const id = Array.isArray(p) ? p.at(0) : p.id;
-        optionsHTML += `<option value="${title}" data-id="${id}">${std}: ${title}</option>`;
+        optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
     });
 
     p1Select.innerHTML = optionsHTML;

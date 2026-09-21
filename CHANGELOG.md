@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored array indexing across `app.js` using `.at()` for safer data access.
 
 ### Fixed
+- Fixed grade badge display issue when selecting a student by ensuring grade level properties are properly assigned.
 - Fixed initial data loading runtime error caused by deprecated call to `populateStudentDatalist`.
 
 ## [0.2.0] - 2026-09-20
