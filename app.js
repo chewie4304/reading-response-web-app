@@ -6,6 +6,8 @@ let studentsData = [];
 let promptsData = [];
 let currentSelectedStudent = null;
 let activePasscode = "";
+let currentMatches = new Array();
+let selectedIndex = -1;
 
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
@@ -19,14 +21,15 @@ async function initApp() {
 // 1. Fetch Roster and Prompts from Google Sheets API
 async function loadInitialData() {
     const statusMsg = document.getElementById("status-message");
+
     try {
         const res = await fetch(`${API_URL}?action=getInitialData`);
         const json = await res.json();
 
         if (json.success) {
-            studentsData = json.students || [];
-            promptsData = json.prompts || [];
-            populateStudentDatalist();
+            studentsData = json.students || new Array();
+            promptsData = json.prompts || new Array();
+            // Data is now ready for type-ahead search without needing datalist population
         } else {
             showStatus("Failed to load initial data from Google Sheets.", "error");
         }
@@ -35,12 +38,32 @@ async function loadInitialData() {
     }
 }
 
-// Handle Student Search & Matching
+// Bind Student Name Input Events
+function bindStudentNameEvents() {
+    const nameInput = document.getElementById("student-name");
+    if (!nameInput) return;
+
+    nameInput.addEventListener("input", handleStudentNameChange);
+    nameInput.addEventListener("keydown", handleStudentNameKeydown);
+
+    // Hide suggestion list when clicking outside
+    document.addEventListener("click", (e) => {
+        if (e.target !== nameInput) {
+            const suggestionsBox = document.getElementById("student-suggestions");
+            if (suggestionsBox) suggestionsBox.classList.add("hidden");
+        }
+    });
+}
+
+// Handle Type-Ahead Input
 function handleStudentNameChange(e) {
     const typedValue = e.target.value.trim().toLowerCase();
     const suggestionsBox = document.getElementById("student-suggestions");
 
+    selectedIndex = -1;
+
     if (typedValue.length < 2) {
+        currentMatches = new Array();
         suggestionsBox.innerHTML = "";
         suggestionsBox.classList.add("hidden");
         resetStudentSelection();
@@ -48,25 +71,14 @@ function handleStudentNameChange(e) {
     }
 
     // Filter roster for matching names
-    const matches = studentsData.filter(s => {
+    currentMatches = studentsData.filter(s => {
         const rawName = String(s.name || "");
         const cleanName = rawName.split(",").at(0).trim().toLowerCase();
         return cleanName.includes(typedValue);
     });
 
-    if (matches.length > 0) {
-        suggestionsBox.innerHTML = "";
-        matches.forEach(student => {
-            const rawName = String(student.name || "");
-            const cleanName = rawName.split(",").at(0).trim();
-
-            const item = document.createElement("div");
-            item.className = "suggestion-item";
-            item.textContent = cleanName;
-            item.addEventListener("click", () => selectStudent(student));
-            suggestionsBox.appendChild(item);
-        });
-        suggestionsBox.classList.remove("hidden");
+    if (currentMatches.length > 0) {
+        renderSuggestions();
     } else {
         suggestionsBox.innerHTML = "";
         suggestionsBox.classList.add("hidden");
@@ -74,7 +86,59 @@ function handleStudentNameChange(e) {
     }
 }
 
-// Lock in student selection when clicked
+// Render Suggestions List with Highlight State
+function renderSuggestions() {
+    const suggestionsBox = document.getElementById("student-suggestions");
+    suggestionsBox.innerHTML = "";
+
+    currentMatches.forEach((student, idx) => {
+        const rawName = String(student.name || "");
+        const cleanName = rawName.split(",").at(0).trim();
+
+        const item = document.createElement("div");
+        item.className = idx === selectedIndex ? "suggestion-item active" : "suggestion-item";
+        item.textContent = cleanName;
+        item.addEventListener("click", () => selectStudent(student));
+        suggestionsBox.appendChild(item);
+    });
+
+    suggestionsBox.classList.remove("hidden");
+}
+
+// Handle Keyboard Navigation (Arrow Keys, Tab, Enter)
+function handleStudentNameKeydown(e) {
+    const suggestionsBox = document.getElementById("student-suggestions");
+    if (suggestionsBox.classList.contains("hidden") || currentMatches.length === 0) {
+        return;
+    }
+
+    if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (selectedIndex < currentMatches.length - 1) {
+            selectedIndex++;
+        } else {
+            selectedIndex = 0;
+        }
+        renderSuggestions();
+    } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (selectedIndex > 0) {
+            selectedIndex--;
+        } else {
+            selectedIndex = currentMatches.length - 1;
+        }
+        renderSuggestions();
+    } else if (e.key === "Tab" || e.key === "Enter") {
+        const targetIdx = selectedIndex >= 0 ? selectedIndex : 0;
+        const chosenStudent = currentMatches.at(targetIdx);
+        if (chosenStudent) {
+            if (e.key === "Enter") e.preventDefault();
+            selectStudent(chosenStudent);
+        }
+    }
+}
+
+// Lock in student selection when clicked or tabbed
 function selectStudent(student) {
     const nameInput = document.getElementById("student-name");
     const suggestionsBox = document.getElementById("student-suggestions");
@@ -103,7 +167,7 @@ function selectStudent(student) {
     populateGradePrompts(student.grade);
 }
 
-// Reset form fields if name is cleared
+// Reset selection state
 function resetStudentSelection() {
     currentSelectedStudent = null;
     document.getElementById("grade-badge").classList.add("hidden");
@@ -122,15 +186,13 @@ function resetStudentSelection() {
     document.getElementById("prompt2-text").classList.add("hidden");
 }
 
-// Bind UI Interactions
 function bindEvents() {
-    const nameInput = document.getElementById("student-name");
+    // Bind student type-ahead input & keyboard listeners
+    bindStudentNameEvents();
+
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
     const form = document.getElementById("response-form");
-
-    // Student selection detection
-    nameInput.addEventListener("input", handleStudentNameChange);
 
     // Prompt dropdown changes
     p1Select.addEventListener("change", () => handlePromptSelect(1));
