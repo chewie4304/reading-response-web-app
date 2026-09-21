@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Replaced native `<datalist>` autocomplete with a custom type-ahead search box to prevent accidental selection of incorrect student names.
-- Cleaned student search suggestions to display clean student names without trailing grade tags or commas.
-- Refactored student name parsing and data extraction using `.at()` to handle array indexing safely.
-
 ### Added
+- Full keyboard accessibility (`ArrowDown`, `ArrowUp`, `Tab`, `Enter`) for the student type-ahead search box.
 - Filter responses by grade level on Teacher Dashboard.
 - Export responses to CSV button.
+
+### Changed
+- Replaced native `<datalist>` dropdown with a custom type-ahead search box to prevent accidental student name selections.
+- Cleaned student name parsing and display to exclude trailing grade tags and commas.
+- Refactored array indexing across `app.js` using `.at()` for safer data access.
+
+### Fixed
+- Fixed initial data loading runtime error caused by deprecated call to `populateStudentDatalist`.
 
 ## [0.2.0] - 2026-09-20
 
