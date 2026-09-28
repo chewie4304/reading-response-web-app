@@ -1,9 +1,7 @@
 // ==========================================
 // 1. SUPABASE INITIALIZATION & INITIAL DATA
 // ==========================================
-
-// Initialize Supabase Client
-const SUPABASE_URL = "https://pnpudjetvfshnmysnmn.supabase.co";
+const SUPABASE_URL = "https://pnpudjetvfshnmysynmn.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHVkamV0dmZzaG5teXN5bm1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNTY5MTksImV4cCI6MjEwMjgzMjkxOX0._XLKuDsEg3OUyJ0fGIQbsvvcLUG3GBvJtUR3tcuwt5M";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -11,10 +9,11 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let studentsData = [];
 let promptsData = [];
 let recentSubmissionsData = [];
+let allFetchedResponses = [];
 let cooldownDays = 14;
 let currentSelectedStudent = null;
 let activePasscode = "";
-let currentMatches = new Array();
+let currentMatches = [];
 let selectedIndex = -1;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -26,13 +25,13 @@ async function initApp() {
     await loadInitialData();
 }
 
-// 1. Fetch Roster and Prompts from Google Sheets API
 async function loadInitialData() {
     try {
-        // 1. Fetch Student Roster
+        // 1. Fetch Student Roster (include id for edit/delete)
         const { data: students, error: studentErr } = await db
             .from('reading_students')
-            .select('name, grade');
+            .select('id, name, grade')
+            .order('name', { ascending: true });
 
         // 2. Fetch Curriculum Prompts
         const { data: prompts, error: promptErr } = await db
@@ -43,10 +42,11 @@ async function loadInitialData() {
             throw new Error("Failed to query initial data from Supabase.");
         }
 
-        studentsData = students || new Array();
-        promptsData = prompts || new Array();
+        studentsData = students || [];
+        promptsData = prompts || [];
 
-        console.log(`Loaded ${studentsData.length} students and ${promptsData.length} prompts.`);
+        // Render roster on Teacher Dashboard if visible
+        renderRoster();
     } catch (err) {
         console.error("Initial data load error:", err);
         showStatus("Error connecting to database server.", "error");
@@ -56,8 +56,88 @@ async function loadInitialData() {
 // ==========================================
 // 2. STUDENT SEARCH & PROMPT SELECTION
 // ==========================================
+function bindStudentNameEvents() {
+    const nameInput = document.getElementById("student-name");
+    if (!nameInput) return;
 
-// Lock in student selection when clicked or tabbed
+    nameInput.addEventListener("input", handleStudentNameChange);
+    nameInput.addEventListener("keydown", handleStudentNameKeydown);
+
+    document.addEventListener("click", (e) => {
+        if (e.target !== nameInput) {
+            const suggestionsBox = document.getElementById("student-suggestions");
+            if (suggestionsBox) suggestionsBox.classList.add("hidden");
+        }
+    });
+}
+
+function handleStudentNameChange(e) {
+    const typedValue = e.target.value.trim().toLowerCase();
+    const suggestionsBox = document.getElementById("student-suggestions");
+    selectedIndex = -1;
+
+    if (typedValue.length < 2) {
+        currentMatches = [];
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.classList.add("hidden");
+        resetStudentSelection();
+        return;
+    }
+
+    currentMatches = studentsData.filter(s => {
+        const cleanName = s.name.split(",").at(0).trim().toLowerCase();
+        return cleanName.includes(typedValue);
+    });
+
+    if (currentMatches.length > 0) {
+        renderSuggestions();
+    } else {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.classList.add("hidden");
+        resetStudentSelection();
+    }
+}
+
+function renderSuggestions() {
+    const suggestionsBox = document.getElementById("student-suggestions");
+    suggestionsBox.innerHTML = "";
+
+    currentMatches.forEach((student, idx) => {
+        const cleanName = student.name.split(",").at(0).trim();
+        const item = document.createElement("div");
+        item.className = idx === selectedIndex ? "suggestion-item active" : "suggestion-item";
+        item.textContent = cleanName;
+        item.addEventListener("click", () => selectStudent(student));
+        suggestionsBox.appendChild(item);
+    });
+
+    suggestionsBox.classList.remove("hidden");
+}
+
+function handleStudentNameKeydown(e) {
+    const suggestionsBox = document.getElementById("student-suggestions");
+    if (suggestionsBox.classList.contains("hidden") || currentMatches.length === 0) {
+        return;
+    }
+
+    if (e.key === "ArrowDown") {
+        e.preventDefault();
+        selectedIndex = selectedIndex < currentMatches.length - 1 ? selectedIndex + 1 : 0;
+        renderSuggestions();
+    } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        selectedIndex = selectedIndex > 0 ? selectedIndex - 1 : currentMatches.length - 1;
+        renderSuggestions();
+    } else if (e.key === "Tab" || e.key === "Enter") {
+        const targetIdx = selectedIndex >= 0 ? selectedIndex : 0;
+        const chosenStudent = currentMatches.at(targetIdx);
+        if (chosenStudent) {
+            if (e.key === "Enter") e.preventDefault();
+            selectStudent(chosenStudent);
+        }
+    }
+}
+
 function selectStudent(student) {
     const cleanName = student.name.split(",").at(0).trim();
     const cleanGrade = student.grade.trim();
@@ -85,7 +165,6 @@ function selectStudent(student) {
         gradeBadge.classList.add("hidden");
     }
 
-    // Enable prompt options and fields
     document.getElementById("prompt1-select").disabled = false;
     document.getElementById("prompt2-select").disabled = false;
     document.getElementById("response1-text").disabled = false;
@@ -97,16 +176,15 @@ function selectStudent(student) {
     }
 }
 
-// Populate prompts filtered by student grade level
 function populateGradePrompts(grade) {
     if (!grade) return;
-    const safeGrade = String(grade).toLowerCase().trim();
-
-    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().trim() === safeGrade);
+    const safeGrade = String(grade).toLowerCase().replace("grade", "").trim();
+    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().replace("grade", "").trim() === safeGrade);
     const restrictedStandards = currentSelectedStudent ? getRestrictedStandards(currentSelectedStudent.name) : new Map();
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
+
     let optionsHTML = `<option value="">-- Select a prompt --</option>`;
 
     filteredPrompts.forEach(p => {
@@ -123,111 +201,13 @@ function populateGradePrompts(grade) {
     p2Select.innerHTML = optionsHTML;
 }
 
-// Bind Student Name Input Events
-function bindStudentNameEvents() {
-    const nameInput = document.getElementById("student-name");
-    if (!nameInput) return;
-
-    nameInput.addEventListener("input", handleStudentNameChange);
-    nameInput.addEventListener("keydown", handleStudentNameKeydown);
-
-    // Hide suggestion list when clicking outside
-    document.addEventListener("click", (e) => {
-        if (e.target !== nameInput) {
-            const suggestionsBox = document.getElementById("student-suggestions");
-            if (suggestionsBox) suggestionsBox.classList.add("hidden");
-        }
-    });
-}
-
-// Handle Type-Ahead Input
-function handleStudentNameChange(e) {
-    const typedValue = e.target.value.trim().toLowerCase();
-    const suggestionsBox = document.getElementById("student-suggestions");
-
-    selectedIndex = -1;
-
-    if (typedValue.length < 2) {
-        currentMatches = new Array();
-        suggestionsBox.innerHTML = "";
-        suggestionsBox.classList.add("hidden");
-        resetStudentSelection();
-        return;
-    }
-
-    // Filter roster for matching names
-    currentMatches = studentsData.filter(s => {
-        const cleanName = s.name.split(",").at(0).trim().toLowerCase();
-        return cleanName.includes(typedValue);
-    });
-
-    if (currentMatches.length > 0) {
-        renderSuggestions();
-    } else {
-        suggestionsBox.innerHTML = "";
-        suggestionsBox.classList.add("hidden");
-        resetStudentSelection();
-    }
-}
-
-// Render Suggestions List with Highlight State
-function renderSuggestions() {
-    const suggestionsBox = document.getElementById("student-suggestions");
-    suggestionsBox.innerHTML = "";
-
-    currentMatches.forEach((student, idx) => {
-        const cleanName = student.name.split(",").at(0).trim();
-
-        const item = document.createElement("div");
-        item.className = idx === selectedIndex ? "suggestion-item active" : "suggestion-item";
-        item.textContent = cleanName;
-        item.addEventListener("click", () => selectStudent(student));
-        suggestionsBox.appendChild(item);
-    });
-
-    suggestionsBox.classList.remove("hidden");
-}
-
-// Handle Keyboard Navigation (Arrow Keys, Tab, Enter)
-function handleStudentNameKeydown(e) {
-    const suggestionsBox = document.getElementById("student-suggestions");
-    if (suggestionsBox.classList.contains("hidden") || currentMatches.length === 0) {
-        return;
-    }
-
-    if (e.key === "ArrowDown") {
-        e.preventDefault();
-        if (selectedIndex < currentMatches.length - 1) {
-            selectedIndex++;
-        } else {
-            selectedIndex = 0;
-        }
-        renderSuggestions();
-    } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        if (selectedIndex > 0) {
-            selectedIndex--;
-        } else {
-            selectedIndex = currentMatches.length - 1;
-        }
-        renderSuggestions();
-    } else if (e.key === "Tab" || e.key === "Enter") {
-        const targetIdx = selectedIndex >= 0 ? selectedIndex : 0;
-        const chosenStudent = currentMatches.at(targetIdx);
-        if (chosenStudent) {
-            if (e.key === "Enter") e.preventDefault();
-            selectStudent(chosenStudent);
-        }
-    }
-}
-
-// Reset selection state
 function resetStudentSelection() {
     currentSelectedStudent = null;
     document.getElementById("grade-badge").classList.add("hidden");
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
+
     p1Select.disabled = true;
     p2Select.disabled = true;
     document.getElementById("response1-text").disabled = true;
@@ -236,75 +216,46 @@ function resetStudentSelection() {
 
     p1Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
     p2Select.innerHTML = `<option value="">-- Select your student name first --</option>`;
+
     document.getElementById("prompt1-text").classList.add("hidden");
     document.getElementById("prompt2-text").classList.add("hidden");
 }
 
 // ==========================================
-// 3. STUDENT FORM SUBMISSION
+// 3. STUDENT FORM SUBMISSION & COOLDOWNS
 // ==========================================
-
 function bindEvents() {
-    // Bind student type-ahead input & keyboard listeners
     bindStudentNameEvents();
+    bindPasscodeManagementEvents();
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
     const form = document.getElementById("response-form");
 
-    // Prompt dropdown changes
     p1Select.addEventListener("change", () => handlePromptSelect(1));
     p2Select.addEventListener("change", () => handlePromptSelect(2));
-
-    // Form submission
     form.addEventListener("submit", handleFormSubmit);
 
-    // Teacher modal & dashboard
     document.getElementById("teacher-access-btn").addEventListener("click", () => {
         document.getElementById("passcode-modal").classList.remove("hidden");
     });
+
     document.getElementById("close-modal-btn").addEventListener("click", () => {
         document.getElementById("passcode-modal").classList.add("hidden");
     });
+
     document.getElementById("verify-passcode-btn").addEventListener("click", handleTeacherLogin);
     document.getElementById("logout-btn").addEventListener("click", handleLogout);
     document.getElementById("refresh-responses-btn").addEventListener("click", loadTeacherResponses);
     document.getElementById("responses-container").addEventListener("click", handleResponsesContainerClick);
 
-    // Add Student toggle & submit
     document.getElementById("add-student-toggle-btn").addEventListener("click", () => {
         document.getElementById("add-student-panel").classList.toggle("hidden");
     });
+
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
 }
 
-// Submit Response Form
-async function handleFormSubmit(e) {
-    e.preventDefault();
-
-    const payload = {
-        student_name: currentSelectedStudent.name,
-        grade_level: currentSelectedStudent.grade,
-        book_title: document.getElementById("book-title").value.trim(),
-        book_author: document.getElementById("book-author").value.trim(),
-        prompt1_title: document.getElementById("prompt1-select").value,
-        response1: document.getElementById("response1-text").value.trim(),
-        prompt2_title: document.getElementById("prompt2-select").value,
-        response2: document.getElementById("response2-text").value.trim()
-    };
-
-    const { error } = await db.from('reading_responses').insert([payload]);
-
-    if (!error) {
-        showStatus("Response submitted successfully!", "success");
-        document.getElementById("response-form").reset();
-        resetStudentSelection();
-    } else {
-        showStatus("Submission error. Please try again.", "error");
-    }
-}
-
-// Determine which prompt standards are still in cooldown for this student
 function getRestrictedStandards(studentName) {
     const restricted = new Map();
     const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
@@ -333,17 +284,16 @@ function getRestrictedStandards(studentName) {
     return restricted;
 }
 
-// Update prompt text descriptions and prevent duplicate choices
 function handlePromptSelect(promptNum) {
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
-
     const selectedSelect = promptNum === 1 ? p1Select : p2Select;
     const siblingSelect = promptNum === 1 ? p2Select : p1Select;
     const targetDesc = document.getElementById(`prompt${promptNum}-text`);
 
     const selectedTitle = selectedSelect.value;
-    const promptObj = promptsData.find(p => p.title === selectedTitle && p.grade.toLowerCase() === currentSelectedStudent.grade.toLowerCase());
+    const safeGrade = currentSelectedStudent ? currentSelectedStudent.grade.toLowerCase().replace("grade", "").trim() : "";
+    const promptObj = promptsData.find(p => p.title === selectedTitle && p.grade.toLowerCase().replace("grade", "").trim() === safeGrade);
 
     if (promptObj) {
         targetDesc.textContent = promptObj.text;
@@ -352,21 +302,54 @@ function handlePromptSelect(promptNum) {
         targetDesc.classList.add("hidden");
     }
 
-    // Block the sibling dropdown from selecting the same prompt in this submission
     Array.from(siblingSelect.options).forEach(opt => {
         if (opt.value === "") return;
         opt.disabled = opt.dataset.restricted === "true" || (selectedTitle !== "" && opt.value === selectedTitle);
     });
+
     if (siblingSelect.value === selectedTitle && selectedTitle !== "") {
         siblingSelect.value = "";
         document.getElementById(`prompt${promptNum === 1 ? 2 : 1}-text`).classList.add("hidden");
     }
 }
 
+async function handleFormSubmit(e) {
+    e.preventDefault();
+
+    if (!currentSelectedStudent) {
+        showStatus("Please select a valid student from the roster.", "error");
+        return;
+    }
+
+    const payload = {
+        student_name: currentSelectedStudent.name,
+        grade_level: currentSelectedStudent.grade,
+        book_title: document.getElementById("book-title").value.trim(),
+        book_author: document.getElementById("book-author").value.trim(),
+        prompt1_title: document.getElementById("prompt1-select").value,
+        response1: document.getElementById("response1-text").value.trim(),
+        prompt2_title: document.getElementById("prompt2-select").value,
+        response2: document.getElementById("response2-text").value.trim()
+    };
+
+    showStatus("Submitting your response...", "info");
+
+    const { error } = await db.from('reading_responses').insert([payload]);
+
+    if (!error) {
+        showStatus("Response submitted successfully!", "success");
+        document.getElementById("response-form").reset();
+        resetStudentSelection();
+        await loadInitialData();
+    } else {
+        console.error("Submission error:", error);
+        showStatus("Submission error. Please try again.", "error");
+    }
+}
+
 // ==========================================
 // 4. TEACHER AUTHENTICATION & DASHBOARD
 // ==========================================
-
 async function verifyTeacherPasscode(inputPasscode) {
     try {
         const { data, error } = await db
@@ -376,9 +359,8 @@ async function verifyTeacherPasscode(inputPasscode) {
             .single();
 
         if (error || !data) {
-            return inputPasscode === "1234"; // Default fallback
+            return inputPasscode === "1234";
         }
-
         return inputPasscode.trim() === String(data.value).trim();
     } catch (err) {
         console.error("Passcode verification error:", err);
@@ -386,35 +368,33 @@ async function verifyTeacherPasscode(inputPasscode) {
     }
 }
 
-// Teacher Authentication
 async function handleTeacherLogin() {
     const passcode = document.getElementById("passcode-input").value.trim();
     const errorText = document.getElementById("modal-error");
-
     if (!passcode) return;
 
-    try {
-        const res = await fetch(`${API_URL}?action=verifyPasscode&passcode=${encodeURIComponent(passcode)}`);
-        const json = await res.json();
+    const isValid = await verifyTeacherPasscode(passcode);
 
-        if (json.success) {
-            activePasscode = passcode;
-            errorText.classList.add("hidden");
-            document.getElementById("passcode-modal").classList.add("hidden");
-            document.getElementById("student-view").classList.add("hidden");
-            document.getElementById("teacher-view").classList.remove("hidden");
-            document.getElementById("passcode-input").value = "";
-            loadTeacherResponses();
-        } else {
-            errorText.classList.remove("hidden");
-        }
-    } catch (err) {
-        errorText.textContent = "Server error verifying passcode.";
+    if (isValid) {
+        activePasscode = passcode;
+        errorText.classList.add("hidden");
+        document.getElementById("passcode-modal").classList.add("hidden");
+        document.getElementById("student-view").classList.add("hidden");
+        document.getElementById("teacher-view").classList.remove("hidden");
+        document.getElementById("passcode-input").value = "";
+        await loadTeacherResponses();
+    } else {
+        errorText.textContent = "Incorrect passcode.";
         errorText.classList.remove("hidden");
     }
 }
 
-// Fetch Responses for Teacher Dashboard
+function handleLogout() {
+    activePasscode = "";
+    document.getElementById("teacher-view").classList.add("hidden");
+    document.getElementById("student-view").classList.remove("hidden");
+}
+
 async function loadTeacherResponses() {
     showStatus("Loading student responses...", "info");
 
@@ -429,29 +409,39 @@ async function loadTeacherResponses() {
         return;
     }
 
-    renderResponses(responses || new Array());
-}
-
-function handleLogout() {
-    activePasscode = "";
-    document.getElementById("teacher-view").classList.add("hidden");
-    document.getElementById("student-view").classList.remove("hidden");
+    allFetchedResponses = responses || [];
+    renderResponses(allFetchedResponses);
 }
 
 // ==========================================
 // 5. DASHBOARD RENDERING & EVALUATIONS
 // ==========================================
+const RUBRIC = [
+    { score: 6, label: "Incomplete / Off-Topic", desc: "Misses the point of the prompt entirely, is completely off-topic, or is so short it doesn't show any real effort or reading." },
+    { score: 7, label: "Minimal Effort", desc: "Barely answers the question. Very short, missing key details, and lacks any text support. Feels rushed." },
+    { score: 8, label: "Developing", desc: "Answers the prompt, but the response is a bit basic or brief. Missing strong text evidence or relies on vague summaries instead of specific book details." },
+    { score: 9, label: "Proficient", desc: "Answers the prompt correctly and clearly. Includes good examples or details from the book, though maybe not quite as detailed as a 10. Shows solid understanding." },
+    { score: 10, label: "Outstanding", desc: "Fully answers all parts of the prompt with deep thought. Uses strong, specific text evidence, quotes, or examples to back up the answer. Shows exceptional effort and high-quality writing." }
+];
+
+function renderRubricRow(responseId, promptNum, currentScore) {
+    const buttons = RUBRIC.map(r => {
+        const isSelected = Number(currentScore) === r.score;
+        return `<button type="button" class="rubric-btn${isSelected ? " selected" : ""}" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-score="${r.score}" data-tooltip="${escapeHtml(r.label)}: ${escapeHtml(r.desc)}">${r.score}</button>`;
+    }).join("");
+
+    return `<div class="rubric-row">${buttons}</div>`;
+}
 
 function renderCommentBlock(responseId, promptNum, currentComment) {
     return `<div class="comment-block">
-      <label>Teacher Comment</label>
-      <textarea class="comment-textarea" rows="2" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" placeholder="Add feedback for this response...">${escapeHtml(currentComment || "")}</textarea>
-      <button type="button" class="secondary-btn save-comment-btn" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}">Save Comment</button>
-      <span class="comment-saved-msg hidden">Saved!</span>
-    </div>`;
+    <label>Teacher Comment</label>
+    <textarea class="comment-textarea" rows="2" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" placeholder="Add feedback for this response...">${escapeHtml(currentComment || "")}</textarea>
+    <button type="button" class="secondary-btn save-comment-btn" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}">Save Comment</button>
+    <span class="comment-saved-msg hidden">Saved!</span>
+  </div>`;
 }
 
-// Render Teacher Dashboard Cards
 function renderResponses(responses) {
     const container = document.getElementById("responses-container");
 
@@ -462,29 +452,29 @@ function renderResponses(responses) {
 
     container.innerHTML = "";
 
-    responses.slice().reverse().forEach(resp => {
+    responses.forEach(resp => {
         const card = document.createElement("div");
         card.className = "response-card";
 
         let formattedDate = "N/A";
-        if (resp.timestamp) {
-            const parsed = new Date(resp.timestamp);
+        const rawDate = resp.created_at || resp.timestamp;
+        if (rawDate) {
+            const parsed = new Date(rawDate);
             formattedDate = !isNaN(parsed.getTime())
                 ? parsed.toLocaleDateString()
-                : String(resp.timestamp).split("T").at(0);
+                : String(rawDate).split("T").at(0);
         }
 
-        // Falls back to the raw timestamp when the sheet has no dedicated row id
-        const responseId = resp.id || resp.timestamp || "";
-        const sName = resp.studentName || "Unknown Student";
-        const gLevel = resp.gradeLevel ? ` (${resp.gradeLevel})` : "";
-        const bTitle = resp.bookTitle || "Untitled Book";
-        const bAuthor = resp.bookAuthor ? ` by ${resp.bookAuthor}` : "";
+        const responseId = resp.id || "";
+        const sName = resp.student_name || resp.studentName || "Unknown Student";
+        const gLevel = (resp.grade_level || resp.gradeLevel) ? ` (${resp.grade_level || resp.gradeLevel})` : "";
+        const bTitle = resp.book_title || resp.bookTitle || "Untitled Book";
+        const bAuthor = (resp.book_author || resp.bookAuthor) ? ` by ${resp.book_author || resp.bookAuthor}` : "";
 
-        const p1Title = resp.prompt1Title || "Prompt 1";
+        const p1Title = resp.prompt1_title || resp.prompt1Title || "Prompt 1";
         const r1Text = resp.response1 || "No response provided.";
 
-        const p2Title = resp.prompt2Title || "Prompt 2";
+        const p2Title = resp.prompt2_title || resp.prompt2Title || "Prompt 2";
         const r2Text = resp.response2 || "No response provided.";
 
         card.innerHTML = `
@@ -512,6 +502,76 @@ function renderResponses(responses) {
     });
 }
 
+function handleResponsesContainerClick(e) {
+    if (e.target.closest(".rubric-btn")) {
+        handleRubricClick(e);
+    } else if (e.target.closest(".delete-response-btn")) {
+        handleDeleteResponse(e);
+    } else if (e.target.closest(".save-comment-btn")) {
+        handleSaveComment(e);
+    }
+}
+
+async function handleDeleteResponse(e) {
+    const btn = e.target.closest(".delete-response-btn");
+    if (!btn || btn.disabled) return;
+
+    if (!confirm("Delete this response permanently? This cannot be undone.")) return;
+
+    const responseId = btn.dataset.responseId;
+    const card = btn.closest(".response-card");
+    btn.disabled = true;
+
+    const { error } = await db
+        .from('reading_responses')
+        .delete()
+        .eq('id', responseId);
+
+    if (!error) {
+        card.remove();
+    } else {
+        alert("Failed to delete response.");
+        btn.disabled = false;
+    }
+}
+
+async function handleRubricClick(e) {
+    const btn = e.target.closest(".rubric-btn");
+    if (!btn || btn.classList.contains("selected")) return;
+
+    const responseId = btn.dataset.responseId;
+    const promptNum = Number(btn.dataset.promptNum);
+    const score = Number(btn.dataset.score);
+
+    const row = btn.parentElement;
+    const siblingButtons = Array.from(row.querySelectorAll(".rubric-btn"));
+    const previousSelected = siblingButtons.find(b => b.classList.contains("selected"));
+
+    siblingButtons.forEach(b => b.classList.toggle("selected", b === btn));
+
+    await saveScoreAndComment(responseId, promptNum, score, null);
+}
+
+async function handleSaveComment(e) {
+    const btn = e.target.closest(".save-comment-btn");
+    if (!btn) return;
+
+    const responseId = btn.dataset.responseId;
+    const promptNum = Number(btn.dataset.promptNum);
+    const block = btn.closest(".comment-block");
+    const textarea = block.querySelector(".comment-textarea");
+    const savedMsg = block.querySelector(".comment-saved-msg");
+    const comment = textarea.value.trim();
+
+    btn.disabled = true;
+
+    await saveScoreAndComment(responseId, promptNum, null, comment);
+
+    savedMsg.classList.remove("hidden");
+    setTimeout(() => savedMsg.classList.add("hidden"), 2000);
+    btn.disabled = false;
+}
+
 async function saveScoreAndComment(responseId, scoreNum, scoreVal, commentVal) {
     const updatePayload = {};
 
@@ -536,167 +596,337 @@ async function saveScoreAndComment(responseId, scoreNum, scoreVal, commentVal) {
     }
 }
 
-// Reading Response Rubric (6-10 point scale)
-const RUBRIC = [
-    { score: 6, label: "Incomplete / Off-Topic", desc: "Misses the point of the prompt entirely, is completely off-topic, or is so short it doesn't show any real effort or reading." },
-    { score: 7, label: "Minimal Effort", desc: "Barely answers the question. Very short, missing key details, and lacks any text support. Feels rushed." },
-    { score: 8, label: "Developing", desc: "Answers the prompt, but the response is a bit basic or brief. Missing strong text evidence or relies on vague summaries instead of specific book details." },
-    { score: 9, label: "Proficient", desc: "Answers the prompt correctly and clearly. Includes good examples or details from the book, though maybe not quite as detailed as a 10. Shows solid understanding." },
-    { score: 10, label: "Outstanding", desc: "Fully answers all parts of the prompt with deep thought. Uses strong, specific text evidence, quotes, or examples to back up the answer. Shows exceptional effort and high-quality writing." }
-];
+// ==========================================
+// 6. PASSCODE MANAGEMENT (CHANGE & RESET)
+// ==========================================
 
-function renderRubricRow(responseId, promptNum, currentScore) {
-    const buttons = RUBRIC.map(r => {
-        const isSelected = Number(currentScore) === r.score;
-        return `<button type="button" class="rubric-btn${isSelected ? " selected" : ""}" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-score="${r.score}" data-tooltip="${escapeHtml(r.label)}: ${escapeHtml(r.desc)}">${r.score}</button>`;
-    }).join("");
-    return `<div class="rubric-row">${buttons}</div>`;
+// Master Recovery Key for Forgot Passcode (Customize as needed)
+const MASTER_RECOVERY_KEY = "1234";
+
+// Bind Modal Triggers inside bindEvents()
+function bindPasscodeManagementEvents() {
+  // Open / Close Change Passcode Modal
+  document.getElementById("change-passcode-btn")?.addEventListener("click", () => {
+    document.getElementById("change-passcode-modal").classList.remove("hidden");
+  });
+  document.getElementById("close-change-modal-btn")?.addEventListener("click", () => {
+    document.getElementById("change-passcode-modal").classList.add("hidden");
+  });
+
+  // Save New Passcode from Dashboard
+  document.getElementById("save-new-passcode-btn")?.addEventListener("click", handleChangePasscode);
+
+  // Open / Close Reset Passcode Modal
+  document.getElementById("forgot-passcode-link")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("passcode-modal").classList.add("hidden");
+    document.getElementById("reset-passcode-modal").classList.remove("hidden");
+  });
+  document.getElementById("close-reset-modal-btn")?.addEventListener("click", () => {
+    document.getElementById("reset-passcode-modal").classList.add("hidden");
+  });
+
+  // Confirm Reset with Recovery Key
+  document.getElementById("confirm-reset-btn")?.addEventListener("click", handleResetPasscode);
 }
 
-// Route clicks within the responses list to the rubric or delete handlers
-function handleResponsesContainerClick(e) {
-    if (e.target.closest(".rubric-btn")) {
-        handleRubricClick(e);
-    } else if (e.target.closest(".delete-response-btn")) {
-        handleDeleteResponse(e);
-    } else if (e.target.closest(".save-comment-btn")) {
-        handleSaveComment(e);
-    }
+// Handler: Change Passcode from Dashboard
+async function handleChangePasscode() {
+  const newPass = document.getElementById("new-passcode-input").value.trim();
+  const confirmPass = document.getElementById("confirm-passcode-input").value.trim();
+  const errText = document.getElementById("change-modal-error");
+
+  if (!newPass) {
+    errText.textContent = "Passcode cannot be empty.";
+    errText.classList.remove("hidden");
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    errText.textContent = "Passcodes do not match.";
+    errText.classList.remove("hidden");
+    return;
+  }
+
+  const { error } = await db
+    .from('reading_settings')
+    .upsert({ key: 'passcode', value: newPass });
+
+  if (!error) {
+    activePasscode = newPass;
+    errText.classList.add("hidden");
+    document.getElementById("new-passcode-input").value = "";
+    document.getElementById("confirm-passcode-input").value = "";
+    document.getElementById("change-passcode-modal").classList.add("hidden");
+    showStatus("Passcode successfully updated!", "success");
+  } else {
+    console.error("Change passcode error:", error);
+    errText.textContent = "Failed to update passcode in database.";
+    errText.classList.remove("hidden");
+  }
 }
 
-// Permanently delete a response card, both on screen and in the Google Sheet
-async function handleDeleteResponse(e) {
-    const btn = e.target.closest(".delete-response-btn");
-    if (!btn || btn.disabled) return;
+// Handler: Reset Passcode using Recovery Key
+async function handleResetPasscode() {
+  const recoveryKey = document.getElementById("recovery-key-input").value.trim();
+  const newPass = document.getElementById("reset-new-passcode-input").value.trim();
+  const errText = document.getElementById("reset-modal-error");
 
-    if (!confirm("Delete this response permanently? This cannot be undone.")) return;
+  if (recoveryKey !== MASTER_RECOVERY_KEY) {
+    errText.textContent = "Invalid Master Recovery Key.";
+    errText.classList.remove("hidden");
+    return;
+  }
 
-    const responseId = btn.dataset.responseId;
-    const card = btn.closest(".response-card");
-    btn.disabled = true;
+  if (!newPass) {
+    errText.textContent = "Please enter a valid new passcode.";
+    errText.classList.remove("hidden");
+    return;
+  }
 
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "deleteResponse",
-                passcode: activePasscode,
-                responseId
-            })
-        });
-        const json = await res.json();
+  const { error } = await db
+    .from('reading_settings')
+    .upsert({ key: 'passcode', value: newPass });
 
-        if (json.success) {
-            card.remove();
-        } else {
-            alert(`Failed to delete response: ${json.message || "Unknown error"}`);
-            btn.disabled = false;
-        }
-    } catch (err) {
-        alert("Failed to delete response. Check your connection.");
-        btn.disabled = false;
-    }
-}
-
-// Save a rubric score for a single prompt response (optimistic UI, reverts on failure)
-async function handleRubricClick(e) {
-    const btn = e.target.closest(".rubric-btn");
-    if (!btn || btn.classList.contains("selected")) return;
-
-    const responseId = btn.dataset.responseId;
-    const promptNum = btn.dataset.promptNum;
-    const score = btn.dataset.score;
-    const row = btn.parentElement;
-    const siblingButtons = Array.from(row.querySelectorAll(".rubric-btn"));
-    const previousSelected = siblingButtons.find(b => b.classList.contains("selected"));
-
-    siblingButtons.forEach(b => b.classList.toggle("selected", b === btn));
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "scoreResponse",
-                passcode: activePasscode,
-                responseId,
-                promptNum: Number(promptNum),
-                score: Number(score)
-            })
-        });
-        const json = await res.json();
-
-        if (!json.success) {
-            siblingButtons.forEach(b => b.classList.toggle("selected", b === previousSelected));
-            alert(`Failed to save score: ${json.message || "Unknown error"}`);
-        }
-    } catch (err) {
-        siblingButtons.forEach(b => b.classList.toggle("selected", b === previousSelected));
-        alert("Failed to save score. Check your connection.");
-    }
-}
-
-// Save a teacher comment for a single prompt response
-async function handleSaveComment(e) {
-    const btn = e.target.closest(".save-comment-btn");
-    if (!btn) return;
-
-    const responseId = btn.dataset.responseId;
-    const promptNum = btn.dataset.promptNum;
-    const block = btn.closest(".comment-block");
-    const textarea = block.querySelector(".comment-textarea");
-    const savedMsg = block.querySelector(".comment-saved-msg");
-    const comment = textarea.value.trim();
-
-    btn.disabled = true;
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "saveComment",
-                passcode: activePasscode,
-                responseId,
-                promptNum: Number(promptNum),
-                comment
-            })
-        });
-        const json = await res.json();
-
-        if (json.success) {
-            savedMsg.classList.remove("hidden");
-            setTimeout(() => savedMsg.classList.add("hidden"), 2000);
-        } else {
-            alert(`Failed to save comment: ${json.message || "Unknown error"}`);
-        }
-    } catch (err) {
-        alert("Failed to save comment. Check your connection.");
-    } finally {
-        btn.disabled = false;
-    }
+  if (!error) {
+    errText.classList.add("hidden");
+    document.getElementById("recovery-key-input").value = "";
+    document.getElementById("reset-new-passcode-input").value = "";
+    document.getElementById("reset-passcode-modal").classList.add("hidden");
+    showStatus("Passcode reset successfully! You can now log in with your new passcode.", "success");
+    document.getElementById("passcode-modal").classList.remove("hidden");
+  } else {
+    console.error("Reset passcode error:", error);
+    errText.textContent = "Failed to reset passcode in database.";
+    errText.classList.remove("hidden");
+  }
 }
 
 // ==========================================
-// 6. ROSTER MANAGEMENT & EXPORTS
+// 7. ROSTER MANAGEMENT & UTILITIES
 // ==========================================
 
-// Add New Student
-async function handleAddStudent(name, grade) {
+async function handleAddStudent(e) {
+    // Prevent browser default form reload
+    e.preventDefault();
+
+    const nameInput = document.getElementById("new-student-name");
+    const gradeInput = document.getElementById("new-student-grade");
+
+    const name = nameInput.value.trim();
+    const grade = gradeInput.value.trim();
+
+    if (!name || !grade) return;
+
+    // Insert into Supabase table
     const { error } = await db
         .from('reading_students')
-        .insert([{ name: name.trim(), grade: grade.trim() }]);
+        .insert([{ name, grade }]);
 
     if (!error) {
         showStatus(`Added ${name} (${grade}) to roster.`, "success");
-        await loadInitialData(); // Refresh local roster
+        nameInput.value = "";
+        gradeInput.value = "";
+        document.getElementById("add-student-panel").classList.add("hidden");
+        await loadInitialData(); // Reload local roster list
     } else {
         console.error("Add student error:", error);
         showStatus("Failed to add student to roster.", "error");
     }
 }
 
-// Helper Utilities
+// Render student roster with Edit and Delete options
+function renderRoster() {
+    const container = document.getElementById("roster-container");
+    const countSpan = document.getElementById("roster-count");
+    if (!container) return;
+
+    if (countSpan) countSpan.textContent = studentsData.length;
+
+    if (studentsData.length === 0) {
+        container.innerHTML = "<p>No students in roster yet.</p>";
+        return;
+    }
+
+    let html = `<table class="roster-table" style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr style="text-align: left; border-bottom: 2px solid var(--border);">
+        <th style="padding: 0.5rem;">Name</th>
+        <th style="padding: 0.5rem;">Grade</th>
+        <th style="padding: 0.5rem; text-align: right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+    studentsData.forEach(student => {
+        html += `
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 0.5rem;"><strong>${escapeHtml(student.name)}</strong></td>
+        <td style="padding: 0.5rem;"><span class="badge">${escapeHtml(student.grade)}</span></td>
+        <td style="padding: 0.5rem; text-align: right;">
+          <button type="button" class="secondary-btn edit-student-btn" data-id="${student.id}" data-name="${escapeHtml(student.name)}" data-grade="${escapeHtml(student.grade)}" style="padding: 0.2rem 0.5rem; font-size: 0.85rem; margin-right: 0.25rem;">✏️ Edit</button>
+          <button type="button" class="delete-response-btn delete-student-btn" data-id="${student.id}" style="padding: 0.2rem 0.5rem; font-size: 0.85rem;">🗑 Delete</button>
+        </td>
+      </tr>`;
+    });
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
+
+// Roster Modal Action State
+let pendingRosterAction = null;
+
+// Handle Edit and Delete Clicks with Custom Modal (No System Popups)
+document.getElementById("roster-container")?.addEventListener("click", (e) => {
+    const deleteBtn = e.target.closest(".delete-student-btn");
+    const editBtn = e.target.closest(".edit-student-btn");
+
+    const modal = document.getElementById("student-modal");
+    const modalTitle = document.getElementById("student-modal-title");
+    const modalBody = document.getElementById("student-modal-body");
+    const confirmBtn = document.getElementById("student-modal-confirm-btn");
+
+    if (deleteBtn) {
+        const studentId = deleteBtn.dataset.id;
+        const studentName = deleteBtn.dataset.name;
+
+        modalTitle.textContent = "Confirm Deletion";
+        modalBody.innerHTML = `<p style="margin:0;">Are you sure you want to remove <strong>${escapeHtml(studentName)}</strong> from the roster?</p>`;
+        confirmBtn.textContent = "Delete Student";
+        confirmBtn.className = "delete-response-btn";
+
+        pendingRosterAction = async () => {
+            const { error } = await db.from('reading_students').delete().eq('id', studentId);
+            if (!error) {
+                showStatus(`Deleted ${studentName} from roster.`, "success");
+                await loadInitialData();
+            } else {
+                showStatus("Failed to delete student.", "error");
+            }
+        };
+
+        modal.classList.remove("hidden");
+    }
+
+    if (editBtn) {
+        const studentId = editBtn.dataset.id;
+        const currentName = editBtn.dataset.name;
+        const currentGrade = editBtn.dataset.grade;
+
+        modalTitle.textContent = "Edit Student Details";
+        modalBody.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Student Name</label>
+          <input type="text" id="edit-modal-name" value="${escapeHtml(currentName)}" style="width:100%; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Grade Level</label>
+          <select id="edit-modal-grade" style="width:100%; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+            <option value="6th" ${currentGrade === '6th' ? 'selected' : ''}>6th Grade</option>
+            <option value="7th" ${currentGrade === '7th' ? 'selected' : ''}>7th Grade</option>
+            <option value="8th" ${currentGrade === '8th' ? 'selected' : ''}>8th Grade</option>
+          </select>
+        </div>
+      </div>
+    `;
+        confirmBtn.textContent = "Save Changes";
+        confirmBtn.className = "";
+
+        pendingRosterAction = async () => {
+            const newName = document.getElementById("edit-modal-name").value.trim();
+            const newGrade = document.getElementById("edit-modal-grade").value.trim();
+
+            if (!newName) return;
+
+            const { error } = await db
+                .from('reading_students')
+                .update({ name: newName, grade: newGrade })
+                .eq('id', studentId);
+
+            if (!error) {
+                showStatus("Student details updated.", "success");
+                await loadInitialData();
+            } else {
+                showStatus("Failed to update student.", "error");
+            }
+        };
+
+        modal.classList.remove("hidden");
+    }
+});
+
+// Modal Action Buttons
+document.getElementById("student-modal-confirm-btn")?.addEventListener("click", async () => {
+    if (pendingRosterAction) {
+        await pendingRosterAction();
+        pendingRosterAction = null;
+    }
+    document.getElementById("student-modal").classList.add("hidden");
+});
+
+document.getElementById("student-modal-cancel-btn")?.addEventListener("click", () => {
+    pendingRosterAction = null;
+    document.getElementById("student-modal").classList.add("hidden");
+});
+
+function exportResponsesToCsv() {
+    if (!allFetchedResponses || allFetchedResponses.length === 0) {
+        showStatus("No responses available to export.", "error");
+        return;
+    }
+
+    const headers = [
+        "Timestamp",
+        "Student Name",
+        "Grade Level",
+        "Book Title",
+        "Book Author",
+        "Prompt 1 Title",
+        "Response 1",
+        "Score 1",
+        "Comment 1",
+        "Prompt 2 Title",
+        "Response 2",
+        "Score 2",
+        "Comment 2"
+    ];
+
+    const csvRows = [headers.join(",")];
+
+    allFetchedResponses.forEach(r => {
+        const row = [
+            `"${String(r.created_at || r.timestamp || '').replace(/"/g, '""')}"`,
+            `"${String(r.student_name || r.studentName || '').replace(/"/g, '""')}"`,
+            `"${String(r.grade_level || r.gradeLevel || '').replace(/"/g, '""')}"`,
+            `"${String(r.book_title || r.bookTitle || '').replace(/"/g, '""')}"`,
+            `"${String(r.book_author || r.bookAuthor || '').replace(/"/g, '""')}"`,
+            `"${String(r.prompt1_title || r.prompt1Title || '').replace(/"/g, '""')}"`,
+            `"${String(r.response1 || '').replace(/"/g, '""')}"`,
+            `"${r.score1 !== null && r.score1 !== undefined ? r.score1 : ''}"`,
+            `"${String(r.comment1 || '').replace(/"/g, '""')}"`,
+            `"${String(r.prompt2_title || r.prompt2Title || '').replace(/"/g, '""')}"`,
+            `"${String(r.response2 || '').replace(/"/g, '""')}"`,
+            `"${r.score2 !== null && r.score2 !== undefined ? r.score2 : ''}"`,
+            `"${String(r.comment2 || '').replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(","));
+    });
+
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `reading_responses_${new Date().toISOString().split('T')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 function showStatus(message, type) {
     const statusMsg = document.getElementById("status-message");
+    if (!statusMsg) return;
     statusMsg.textContent = message;
     statusMsg.className = `status-box ${type}`;
     statusMsg.classList.remove("hidden");
@@ -709,59 +939,4 @@ function escapeHtml(str) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
-}
-
-// Export loaded responses to CSV for teacher gradebooks
-function exportResponsesToCsv() {
-  if (!allFetchedResponses || allFetchedResponses.length === 0) {
-    showStatus("No responses available to export.", "error");
-    return;
-  }
-
-  const headers = [
-    "Timestamp",
-    "Student Name",
-    "Grade Level",
-    "Book Title",
-    "Book Author",
-    "Prompt 1 Title",
-    "Response 1",
-    "Score 1",
-    "Comment 1",
-    "Prompt 2 Title",
-    "Response 2",
-    "Score 2",
-    "Comment 2"
-  ];
-
-  const csvRows = [];
-  csvRows.push(headers.join(","));
-
-  allFetchedResponses.forEach(r => {
-    const row = [
-      `"${String(r.created_at || r.timestamp || '').replace(/"/g, '""')}"`,
-      `"${String(r.student_name || r.studentName || '').replace(/"/g, '""')}"`,
-      `"${String(r.grade_level || r.gradeLevel || '').replace(/"/g, '""')}"`,
-      `"${String(r.book_title || r.bookTitle || '').replace(/"/g, '""')}"`,
-      `"${String(r.book_author || r.bookAuthor || '').replace(/"/g, '""')}"`,
-      `"${String(r.prompt1_title || r.prompt1Title || '').replace(/"/g, '""')}"`,
-      `"${String(r.response1 || '').replace(/"/g, '""')}"`,
-      `"${r.score1 !== null && r.score1 !== undefined ? r.score1 : ''}"`,
-      `"${String(r.comment1 || '').replace(/"/g, '""')}"`,
-      `"${String(r.prompt2_title || r.prompt2Title || '').replace(/"/g, '""')}"`,
-      `"${String(r.response2 || '').replace(/"/g, '""')}"`,
-      `"${r.score2 !== null && r.score2 !== undefined ? r.score2 : ''}"`,
-      `"${String(r.comment2 || '').replace(/"/g, '""')}"`
-    ];
-    csvRows.push(row.join(","));
-  });
-
-  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", `reading_responses_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 }

@@ -81,6 +81,7 @@
 
                 <button type="submit" id="submit-btn" disabled>Submit Weekly Responses</button>
             </form>
+
             <div id="status-message" class="status-box hidden"></div>
         </section>
 
@@ -89,7 +90,7 @@
             <div class="teacher-header">
                 <h2>Teacher Dashboard</h2>
                 <div>
-                    <button id="add-student-toggle-btn" class="secondary-btn">+ Add Student</button>
+                    <button id="change-passcode-btn" class="secondary-btn">🔑 Change Passcode</button>
                     <button id="logout-btn">Logout</button>
                 </div>
             </div>
@@ -112,11 +113,41 @@
                 <div id="add-student-status" class="status-box hidden"></div>
             </div>
 
+            <!-- Class Roster Management Panel -->
+            <div id="roster-panel" class="panel">
+                <div class="dashboard-controls">
+                    <h3>Class Roster (<span id="roster-count">0</span>)</h3>
+                    <button id="add-student-toggle-btn" class="secondary-btn">+ Add Student</button>
+                </div>
+
+                <!-- Collapsible Add Student Form -->
+                <div id="add-student-panel" class="hidden" style="margin-bottom: 1rem;">
+                    <form id="add-student-form">
+                        <div class="form-row">
+                            <input type="text" id="new-student-name" placeholder="Student Name" required>
+                            <select id="new-student-grade" required>
+                                <option value="">Select Grade</option>
+                                <option value="6th">6th Grade</option>
+                                <option value="7th">7th Grade</option>
+                                <option value="8th">8th Grade</option>
+                            </select>
+                            <button type="submit">Save Student</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Roster List -->
+                <div id="roster-container" class="roster-list">
+                    <p>Loading roster...</p>
+                </div>
+            </div>
+
             <!-- Responses List -->
             <div class="dashboard-controls">
                 <h3>Submitted Responses</h3>
                 <button id="refresh-responses-btn" class="secondary-btn">↻ Refresh</button>
             </div>
+
             <div id="responses-container" class="responses-list">
                 <p>Click login to load responses...</p>
             </div>
@@ -134,10 +165,80 @@
                 <button id="verify-passcode-btn">Access Dashboard</button>
                 <button id="close-modal-btn" class="secondary-btn">Cancel</button>
             </div>
+            <div style="margin-top: 0.75rem; text-align: center;">
+                <a href="#" id="forgot-passcode-link" style="font-size: 0.85rem; color: var(--primary);">Forgot
+                    Passcode?</a>
+            </div>
             <p id="modal-error" class="error-text hidden">Incorrect passcode.</p>
         </div>
     </div>
 
+    <!-- Custom Student Edit & Delete Modal -->
+    <div id="student-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="student-modal-title">Edit Student</h3>
+            <div id="student-modal-body" style="margin: 1rem 0;">
+                <!-- Inputs or confirmation text rendered dynamically -->
+            </div>
+            <div class="modal-actions">
+                <button id="student-modal-confirm-btn">Save Changes</button>
+                <button id="student-modal-cancel-btn" class="secondary-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Passcode Modal (Inside Dashboard) -->
+    <div id="change-passcode-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Change Dashboard Passcode</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin: 1rem 0;">
+                <div>
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">New
+                        Passcode</label>
+                    <input type="password" id="new-passcode-input" placeholder="Enter new passcode">
+                </div>
+                <div>
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Confirm New
+                        Passcode</label>
+                    <input type="password" id="confirm-passcode-input" placeholder="Re-enter new passcode">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="save-new-passcode-btn">Update Passcode</button>
+                <button id="close-change-modal-btn" class="secondary-btn">Cancel</button>
+            </div>
+            <p id="change-modal-error" class="error-text hidden" style="margin-top: 0.5rem;"></p>
+        </div>
+    </div>
+
+    <!-- Reset / Forgot Passcode Modal -->
+    <div id="reset-passcode-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Reset Teacher Passcode</h3>
+            <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem;">
+                Enter your Master Recovery Key to set a new passcode, or update the <code>passcode</code> row directly
+                in your Supabase Table Editor.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+                <div>
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Recovery
+                        Key </label>
+                    <input type="password" id="recovery-key-input" placeholder="Master Recovery Key">
+                </div>
+                <div>
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">New
+                        Passcode</label>
+                    <input type="password" id="reset-new-passcode-input" placeholder="Enter new passcode">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="confirm-reset-btn">Reset Passcode</button>
+                <button id="close-reset-modal-btn" class="secondary-btn">Cancel</button>
+            </div>
+            <p id="reset-modal-error" class="error-text hidden" style="margin-top: 0.5rem;"></p>
+        </div>
+    </div>
+    
     <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Main Application Script -->

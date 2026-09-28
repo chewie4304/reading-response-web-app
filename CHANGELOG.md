@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+# Changelog
+
+All notable changes to the Reading Response Web App will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.0] - 2026-09-27
+
+### Added
+- Migrated backend infrastructure from Google Apps Script / Google Sheets to Supabase PostgreSQL.
+- Added Class Roster Management panel to Teacher Dashboard allowing teachers to view, edit, and delete student roster entries directly.
+- Added in-dashboard "Change Passcode" feature backed by Supabase `reading_settings`.
+- Replaced native browser popups (`confirm()`, `prompt()`) with custom styled modal dialogs for editing and deleting roster entries.
+
+### Changed
+- Refactored `app.js` to utilize the official `@supabase/supabase-js` client library.
+- Prefixed all database tables (`reading_students`, `reading_prompts`, `reading_responses`, `reading_settings`) to support sharing a single free-tier Supabase project across multiple web apps.
+- Corrected `index.html` stylesheet reference from `styles.css` to `style.css`.
+- Secured passcode security by removing client-side recovery keys; emergency resets are handled via the Supabase Table Editor.
+
+### Fixed
+- Resolved page reload glitch on adding students by adding `e.preventDefault()` to form submit handlers.
+- Corrected Supabase project domain URL string.
+- Fixed field name mapping (`snake_case` vs. `camelCase`) for student response cards on the Teacher Dashboard.
+
 ## [0.3.0] - 2026-09-20
 
 ### Added
