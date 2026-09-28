@@ -251,6 +251,44 @@
         </div>
     </div>
 
+    <!-- Student Edit Submission Modal -->
+    <div id="student-edit-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px; width: 90%;">
+            <h3>Edit Submission</h3>
+            <form id="student-edit-form" style="margin-top: 1rem;">
+                <input type="hidden" id="edit-response-id">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-book-title">Book Title</label>
+                        <input type="text" id="edit-book-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-book-author">Author</label>
+                        <input type="text" id="edit-book-author" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 0.75rem;">
+                    <label id="edit-prompt1-label" style="font-weight:600; font-size:0.9rem;"></label>
+                    <textarea id="edit-response1-text" rows="3" required
+                        style="width:100%; margin-top:0.25rem;"></textarea>
+                </div>
+
+                <div class="form-group" style="margin-top: 0.75rem;">
+                    <label id="edit-prompt2-label" style="font-weight:600; font-size:0.9rem;"></label>
+                    <textarea id="edit-response2-text" rows="3" required
+                        style="width:100%; margin-top:0.25rem;"></textarea>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 1.25rem;">
+                    <button type="submit" id="save-student-edit-btn">Save Changes</button>
+                    <button type="button" id="close-student-edit-btn" class="secondary-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Main Application Script -->

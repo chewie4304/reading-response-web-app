@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-27
+
 ### Added
-- Added a **Student History & Feedback Panel** to the student view allowing students to review their past submissions, numeric rubric scores, and teacher feedback.
-- Positioned the submission history section below the weekly response form.
-- Added an interactive **Show / Hide** toggle button to collapse or expand past student submissions.
+- Added a **Student Submission History & Feedback Panel** positioned below the weekly response form, enabling students to review past reflections, rubric scores, and teacher comments.
+- Added a **Show / Hide** toggle button for collapsing or expanding the student submission history section.
+- Added student self-service controls allowing students to **edit** or **delete** their own submissions as long as they remain ungraded (`score1` and `score2` are null).
+- Added a custom modal (`#student-edit-modal`) for students to update book details and prompt responses before grading.
 
 ### Changed
-- Updated student selection flow (`selectStudent`) to automatically query and display past submission records from Supabase upon selecting a name.
-- Updated `resetStudentSelection` to automatically hide the history panel when clearing or resetting student selection.
+- Automatically hide student submission history when clearing or resetting the student selection input.
+- Dynamically hide edit/delete controls on submission cards once a teacher assigns a score to preserve evaluations.
 
 ## [1.0.0] - 2026-09-27
 

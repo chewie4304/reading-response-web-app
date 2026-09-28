@@ -770,7 +770,17 @@ function renderStudentHistory(records) {
         const bTitle = resp.book_title || "Untitled Book";
         const bAuthor = resp.book_author ? ` by ${resp.book_author}` : "";
 
-        // Helper to generate score badge
+        // Check if the submission has been scored by a teacher
+        const isGraded = (resp.score1 !== null && resp.score1 !== undefined) ||
+            (resp.score2 !== null && resp.score2 !== undefined);
+
+        const actionButtons = !isGraded ? `
+      <div class="card-actions" style="margin-top: 0.5rem; text-align: right;">
+        <button type="button" class="secondary-btn student-edit-btn" data-id="${resp.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; margin-right: 0.25rem;">✏️ Edit</button>
+        <button type="button" class="delete-response-btn student-delete-btn" data-id="${resp.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">🗑 Delete</button>
+      </div>
+    ` : '';
+
         const getScoreBadge = (score) => {
             if (score === null || score === undefined) {
                 return `<span class="badge" style="background: #fef3c7; color: #92400e;">⏳ Pending Review</span>`;
@@ -811,6 +821,7 @@ function renderStudentHistory(records) {
         <p style="font-size:0.92rem;">${escapeHtml(r2Text)}</p>
         ${c2Text}
       </div>
+      ${actionButtons}
     `;
 
         container.appendChild(card);
@@ -1038,6 +1049,119 @@ function exportResponsesToCsv() {
     link.click();
     document.body.removeChild(link);
 }
+
+// Global memory store for active student history records
+let currentStudentRecords = [];
+
+// Store raw history records when fetched
+async function loadStudentHistory(studentName) {
+    const panel = document.getElementById("student-history-panel");
+    const container = document.getElementById("history-container");
+    const countSpan = document.getElementById("history-count");
+    const toggleBtn = document.getElementById("toggle-history-btn");
+
+    if (!panel || !container) return;
+
+    panel.classList.remove("hidden");
+    container.classList.remove("hidden");
+    if (toggleBtn) toggleBtn.textContent = "Hide";
+
+    container.innerHTML = "<p>Loading your past submissions...</p>";
+
+    const { data: history, error } = await db
+        .from('reading_responses')
+        .select('*')
+        .eq('student_name', studentName)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Fetch student history error:", error);
+        container.innerHTML = "<p>Unable to load submission history.</p>";
+        return;
+    }
+
+    currentStudentRecords = history || [];
+    if (countSpan) countSpan.textContent = currentStudentRecords.length;
+    renderStudentHistory(currentStudentRecords);
+}
+
+// Student History Container Click Delegator (Edit / Delete)
+document.getElementById("history-container")?.addEventListener("click", async (e) => {
+    const deleteBtn = e.target.closest(".student-delete-btn");
+    const editBtn = e.target.closest(".student-edit-btn");
+
+    if (deleteBtn) {
+        const responseId = deleteBtn.dataset.id;
+        if (confirm("Are you sure you want to delete this submission?")) {
+            const { error } = await db
+                .from('reading_responses')
+                .delete()
+                .eq('id', responseId);
+
+            if (!error) {
+                showStatus("Submission deleted successfully.", "success");
+                if (currentSelectedStudent) {
+                    await loadStudentHistory(currentSelectedStudent.name);
+                    await loadInitialData();
+                }
+            } else {
+                showStatus("Failed to delete submission.", "error");
+            }
+        }
+    }
+
+    if (editBtn) {
+        const responseId = editBtn.dataset.id;
+        const record = currentStudentRecords.find(r => String(r.id) === String(responseId));
+
+        if (!record) return;
+
+        document.getElementById("edit-response-id").value = record.id;
+        document.getElementById("edit-book-title").value = record.book_title || "";
+        document.getElementById("edit-book-author").value = record.book_author || "";
+
+        document.getElementById("edit-prompt1-label").textContent = record.prompt1_title || "Prompt 1";
+        document.getElementById("edit-response1-text").value = record.response1 || "";
+
+        document.getElementById("edit-prompt2-label").textContent = record.prompt2_title || "Prompt 2";
+        document.getElementById("edit-response2-text").value = record.response2 || "";
+
+        document.getElementById("student-edit-modal").classList.remove("hidden");
+    }
+});
+
+// Student Edit Modal Handlers
+document.getElementById("close-student-edit-btn")?.addEventListener("click", () => {
+    document.getElementById("student-edit-modal").classList.add("hidden");
+});
+
+document.getElementById("student-edit-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const responseId = document.getElementById("edit-response-id").value;
+    const payload = {
+        book_title: document.getElementById("edit-book-title").value.trim(),
+        book_author: document.getElementById("edit-book-author").value.trim(),
+        response1: document.getElementById("edit-response1-text").value.trim(),
+        response2: document.getElementById("edit-response2-text").value.trim()
+    };
+
+    const { error } = await db
+        .from('reading_responses')
+        .update(payload)
+        .eq('id', responseId);
+
+    if (!error) {
+        showStatus("Submission updated successfully!", "success");
+        document.getElementById("student-edit-modal").classList.add("hidden");
+        if (currentSelectedStudent) {
+            await loadStudentHistory(currentSelectedStudent.name);
+        }
+    } else {
+        console.error("Update error:", error);
+        showStatus("Failed to update submission.", "error");
+    }
+});
 
 function showStatus(message, type) {
     const statusMsg = document.getElementById("status-message");
