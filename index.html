@@ -21,6 +21,18 @@
             <h2>Submit Weekly Reading Response</h2>
             <p class="subtitle">Complete two prompt responses for your assigned grade level.</p>
 
+            <!-- Student History & Feedback Panel -->
+            <div id="student-history-panel" class="panel hidden" style="margin-top: 1rem; margin-bottom: 1.5rem;">
+                <div class="dashboard-controls" style="margin-bottom: 0.5rem;">
+                    <h3>📋 My Past Submissions & Feedback (<span id="history-count">0</span>)</h3>
+                    <button id="toggle-history-btn" type="button" class="secondary-btn"
+                        style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Show / Hide</button>
+                </div>
+                <div id="history-container" class="responses-list" style="margin-top: 0.75rem;">
+                    <p>Select your name to load past submissions...</p>
+                </div>
+            </div>
+
             <form id="response-form">
                 <!-- Student Selection -->
                 <div class="form-group">
@@ -238,7 +250,7 @@
             <p id="reset-modal-error" class="error-text hidden" style="margin-top: 0.5rem;"></p>
         </div>
     </div>
-    
+
     <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Main Application Script -->

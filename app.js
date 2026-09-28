@@ -174,6 +174,9 @@ function selectStudent(student) {
     if (cleanGrade) {
         populateGradePrompts(cleanGrade);
     }
+
+    loadStudentHistory(cleanName);
+
 }
 
 function populateGradePrompts(grade) {
@@ -219,6 +222,10 @@ function resetStudentSelection() {
 
     document.getElementById("prompt1-text").classList.add("hidden");
     document.getElementById("prompt2-text").classList.add("hidden");
+
+    // Hide history panel when student selection is reset
+    document.getElementById("student-history-panel")?.classList.add("hidden");
+
 }
 
 // ==========================================
@@ -251,6 +258,11 @@ function bindEvents() {
 
     document.getElementById("add-student-toggle-btn").addEventListener("click", () => {
         document.getElementById("add-student-panel").classList.toggle("hidden");
+    });
+
+    // Inside bindEvents()
+    document.getElementById("toggle-history-btn")?.addEventListener("click", () => {
+        document.getElementById("history-container")?.classList.toggle("hidden");
     });
 
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
@@ -605,105 +617,208 @@ const MASTER_RECOVERY_KEY = "1234";
 
 // Bind Modal Triggers inside bindEvents()
 function bindPasscodeManagementEvents() {
-  // Open / Close Change Passcode Modal
-  document.getElementById("change-passcode-btn")?.addEventListener("click", () => {
-    document.getElementById("change-passcode-modal").classList.remove("hidden");
-  });
-  document.getElementById("close-change-modal-btn")?.addEventListener("click", () => {
-    document.getElementById("change-passcode-modal").classList.add("hidden");
-  });
+    // Open / Close Change Passcode Modal
+    document.getElementById("change-passcode-btn")?.addEventListener("click", () => {
+        document.getElementById("change-passcode-modal").classList.remove("hidden");
+    });
+    document.getElementById("close-change-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("change-passcode-modal").classList.add("hidden");
+    });
 
-  // Save New Passcode from Dashboard
-  document.getElementById("save-new-passcode-btn")?.addEventListener("click", handleChangePasscode);
+    // Save New Passcode from Dashboard
+    document.getElementById("save-new-passcode-btn")?.addEventListener("click", handleChangePasscode);
 
-  // Open / Close Reset Passcode Modal
-  document.getElementById("forgot-passcode-link")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    document.getElementById("passcode-modal").classList.add("hidden");
-    document.getElementById("reset-passcode-modal").classList.remove("hidden");
-  });
-  document.getElementById("close-reset-modal-btn")?.addEventListener("click", () => {
-    document.getElementById("reset-passcode-modal").classList.add("hidden");
-  });
+    // Open / Close Reset Passcode Modal
+    document.getElementById("forgot-passcode-link")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        document.getElementById("passcode-modal").classList.add("hidden");
+        document.getElementById("reset-passcode-modal").classList.remove("hidden");
+    });
+    document.getElementById("close-reset-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("reset-passcode-modal").classList.add("hidden");
+    });
 
-  // Confirm Reset with Recovery Key
-  document.getElementById("confirm-reset-btn")?.addEventListener("click", handleResetPasscode);
+    // Confirm Reset with Recovery Key
+    document.getElementById("confirm-reset-btn")?.addEventListener("click", handleResetPasscode);
 }
 
 // Handler: Change Passcode from Dashboard
 async function handleChangePasscode() {
-  const newPass = document.getElementById("new-passcode-input").value.trim();
-  const confirmPass = document.getElementById("confirm-passcode-input").value.trim();
-  const errText = document.getElementById("change-modal-error");
+    const newPass = document.getElementById("new-passcode-input").value.trim();
+    const confirmPass = document.getElementById("confirm-passcode-input").value.trim();
+    const errText = document.getElementById("change-modal-error");
 
-  if (!newPass) {
-    errText.textContent = "Passcode cannot be empty.";
-    errText.classList.remove("hidden");
-    return;
-  }
+    if (!newPass) {
+        errText.textContent = "Passcode cannot be empty.";
+        errText.classList.remove("hidden");
+        return;
+    }
 
-  if (newPass !== confirmPass) {
-    errText.textContent = "Passcodes do not match.";
-    errText.classList.remove("hidden");
-    return;
-  }
+    if (newPass !== confirmPass) {
+        errText.textContent = "Passcodes do not match.";
+        errText.classList.remove("hidden");
+        return;
+    }
 
-  const { error } = await db
-    .from('reading_settings')
-    .upsert({ key: 'passcode', value: newPass });
+    const { error } = await db
+        .from('reading_settings')
+        .upsert({ key: 'passcode', value: newPass });
 
-  if (!error) {
-    activePasscode = newPass;
-    errText.classList.add("hidden");
-    document.getElementById("new-passcode-input").value = "";
-    document.getElementById("confirm-passcode-input").value = "";
-    document.getElementById("change-passcode-modal").classList.add("hidden");
-    showStatus("Passcode successfully updated!", "success");
-  } else {
-    console.error("Change passcode error:", error);
-    errText.textContent = "Failed to update passcode in database.";
-    errText.classList.remove("hidden");
-  }
+    if (!error) {
+        activePasscode = newPass;
+        errText.classList.add("hidden");
+        document.getElementById("new-passcode-input").value = "";
+        document.getElementById("confirm-passcode-input").value = "";
+        document.getElementById("change-passcode-modal").classList.add("hidden");
+        showStatus("Passcode successfully updated!", "success");
+    } else {
+        console.error("Change passcode error:", error);
+        errText.textContent = "Failed to update passcode in database.";
+        errText.classList.remove("hidden");
+    }
 }
 
 // Handler: Reset Passcode using Recovery Key
 async function handleResetPasscode() {
-  const recoveryKey = document.getElementById("recovery-key-input").value.trim();
-  const newPass = document.getElementById("reset-new-passcode-input").value.trim();
-  const errText = document.getElementById("reset-modal-error");
+    const recoveryKey = document.getElementById("recovery-key-input").value.trim();
+    const newPass = document.getElementById("reset-new-passcode-input").value.trim();
+    const errText = document.getElementById("reset-modal-error");
 
-  if (recoveryKey !== MASTER_RECOVERY_KEY) {
-    errText.textContent = "Invalid Master Recovery Key.";
-    errText.classList.remove("hidden");
-    return;
-  }
+    if (recoveryKey !== MASTER_RECOVERY_KEY) {
+        errText.textContent = "Invalid Master Recovery Key.";
+        errText.classList.remove("hidden");
+        return;
+    }
 
-  if (!newPass) {
-    errText.textContent = "Please enter a valid new passcode.";
-    errText.classList.remove("hidden");
-    return;
-  }
+    if (!newPass) {
+        errText.textContent = "Please enter a valid new passcode.";
+        errText.classList.remove("hidden");
+        return;
+    }
 
-  const { error } = await db
-    .from('reading_settings')
-    .upsert({ key: 'passcode', value: newPass });
+    const { error } = await db
+        .from('reading_settings')
+        .upsert({ key: 'passcode', value: newPass });
 
-  if (!error) {
-    errText.classList.add("hidden");
-    document.getElementById("recovery-key-input").value = "";
-    document.getElementById("reset-new-passcode-input").value = "";
-    document.getElementById("reset-passcode-modal").classList.add("hidden");
-    showStatus("Passcode reset successfully! You can now log in with your new passcode.", "success");
-    document.getElementById("passcode-modal").classList.remove("hidden");
-  } else {
-    console.error("Reset passcode error:", error);
-    errText.textContent = "Failed to reset passcode in database.";
-    errText.classList.remove("hidden");
-  }
+    if (!error) {
+        errText.classList.add("hidden");
+        document.getElementById("recovery-key-input").value = "";
+        document.getElementById("reset-new-passcode-input").value = "";
+        document.getElementById("reset-passcode-modal").classList.add("hidden");
+        showStatus("Passcode reset successfully! You can now log in with your new passcode.", "success");
+        document.getElementById("passcode-modal").classList.remove("hidden");
+    } else {
+        console.error("Reset passcode error:", error);
+        errText.textContent = "Failed to reset passcode in database.";
+        errText.classList.remove("hidden");
+    }
 }
 
 // ==========================================
-// 7. ROSTER MANAGEMENT & UTILITIES
+// 7. STUDENT HISTORY & FEEDBACK VIEW
+// ==========================================
+
+async function loadStudentHistory(studentName) {
+    const panel = document.getElementById("student-history-panel");
+    const container = document.getElementById("history-container");
+    const countSpan = document.getElementById("history-count");
+
+    if (!panel || !container) return;
+
+    panel.classList.remove("hidden");
+    container.innerHTML = "<p>Loading your past submissions...</p>";
+
+    const { data: history, error } = await db
+        .from('reading_responses')
+        .select('*')
+        .eq('student_name', studentName)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Fetch student history error:", error);
+        container.innerHTML = "<p>Unable to load submission history.</p>";
+        return;
+    }
+
+    const records = history || [];
+    if (countSpan) countSpan.textContent = records.length;
+    renderStudentHistory(records);
+}
+
+function renderStudentHistory(records) {
+    const container = document.getElementById("history-container");
+    if (!container) return;
+
+    if (records.length === 0) {
+        container.innerHTML = "<p style='color: var(--muted); font-size: 0.9rem;'>No past submissions found yet.</p>";
+        return;
+    }
+
+    container.innerHTML = "";
+
+    records.forEach(resp => {
+        const card = document.createElement("div");
+        card.className = "response-card";
+
+        let formattedDate = "N/A";
+        const rawDate = resp.created_at || resp.timestamp;
+        if (rawDate) {
+            const parsed = new Date(rawDate);
+            formattedDate = !isNaN(parsed.getTime()) ? parsed.toLocaleDateString() : String(rawDate).split("T").at(0);
+        }
+
+        const bTitle = resp.book_title || "Untitled Book";
+        const bAuthor = resp.book_author ? ` by ${resp.book_author}` : "";
+
+        // Helper to generate score badge
+        const getScoreBadge = (score) => {
+            if (score === null || score === undefined) {
+                return `<span class="badge" style="background: #fef3c7; color: #92400e;">⏳ Pending Review</span>`;
+            }
+            const rubricObj = RUBRIC.find(r => r.score === Number(score));
+            const label = rubricObj ? ` — ${rubricObj.label}` : '';
+            return `<span class="badge" style="background: #dcfce7; color: #15803d; font-weight:700;">Score: ${score}/10${label}</span>`;
+        };
+
+        const p1Title = resp.prompt1_title || "Prompt 1";
+        const r1Text = resp.response1 || "";
+        const s1Badge = getScoreBadge(resp.score1);
+        const c1Text = resp.comment1 ? `<div class="status-box info" style="margin-top:0.5rem; font-size:0.85rem; padding:0.5rem 0.75rem;"><strong>Teacher Feedback:</strong> ${escapeHtml(resp.comment1)}</div>` : '';
+
+        const p2Title = resp.prompt2_title || "Prompt 2";
+        const r2Text = resp.response2 || "";
+        const s2Badge = getScoreBadge(resp.score2);
+        const c2Text = resp.comment2 ? `<div class="status-box info" style="margin-top:0.5rem; font-size:0.85rem; padding:0.5rem 0.75rem;"><strong>Teacher Feedback:</strong> ${escapeHtml(resp.comment2)}</div>` : '';
+
+        card.innerHTML = `
+      <div class="card-header">
+        <strong>📖 <em>${escapeHtml(bTitle)}</em>${escapeHtml(bAuthor)}</strong>
+        <span class="date">${escapeHtml(formattedDate)}</span>
+      </div>
+      <div class="resp-block">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; flex-wrap:wrap; gap:0.4rem;">
+          <strong>${escapeHtml(p1Title)}</strong>
+          ${s1Badge}
+        </div>
+        <p style="font-size:0.92rem;">${escapeHtml(r1Text)}</p>
+        ${c1Text}
+      </div>
+      <div class="resp-block">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; flex-wrap:wrap; gap:0.4rem;">
+          <strong>${escapeHtml(p2Title)}</strong>
+          ${s2Badge}
+        </div>
+        <p style="font-size:0.92rem;">${escapeHtml(r2Text)}</p>
+        ${c2Text}
+      </div>
+    `;
+
+        container.appendChild(card);
+    });
+}
+
+// ==========================================
+// 8. ROSTER MANAGEMENT & UTILITIES
 // ==========================================
 
 async function handleAddStudent(e) {

@@ -7,14 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-# Changelog
+### Added
+- Added a **Student History & Feedback Panel** to the student view allowing students to review their past submissions, numeric rubric scores, and teacher feedback.
+- Positioned the submission history section below the weekly response form.
+- Added an interactive **Show / Hide** toggle button to collapse or expand past student submissions.
 
-All notable changes to the Reading Response Web App will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+### Changed
+- Updated student selection flow (`selectStudent`) to automatically query and display past submission records from Supabase upon selecting a name.
+- Updated `resetStudentSelection` to automatically hide the history panel when clearing or resetting student selection.
 
 ## [1.0.0] - 2026-09-27
 
