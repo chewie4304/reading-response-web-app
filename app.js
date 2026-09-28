@@ -1,5 +1,11 @@
-// Web App API Endpoint
-const API_URL = "https://script.google.com/macros/s/AKfycbyzv-2a7duFRLcbHR14jDW0YzBDGjKMVQFI3UDPWG0GCweQTiB26-119hKKEeHl59S4/exec";
+// ==========================================
+// 1. SUPABASE INITIALIZATION & INITIAL DATA
+// ==========================================
+
+// Initialize Supabase Client
+const SUPABASE_URL = "https://pnpudjetvfshnmysnmn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHVkamV0dmZzaG5teXN5bm1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNTY5MTksImV4cCI6MjEwMjgzMjkxOX0._XLKuDsEg3OUyJ0fGIQbsvvcLUG3GBvJtUR3tcuwt5M";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Global App State
 let studentsData = [];
@@ -22,32 +28,99 @@ async function initApp() {
 
 // 1. Fetch Roster and Prompts from Google Sheets API
 async function loadInitialData() {
-    const statusMsg = document.getElementById("status-message");
-
     try {
-        const res = await fetch(`${API_URL}?action=getInitialData`);
-        const json = await res.json();
+        // 1. Fetch Student Roster
+        const { data: students, error: studentErr } = await db
+            .from('reading_students')
+            .select('name, grade');
 
-        if (json.success) {
-            studentsData = (json.students || new Array()).map(s => ({
-                name: String(s.name || ""),
-                grade: String(s.grade || "")
-            }));
-            promptsData = (json.prompts || new Array()).map(p => ({
-                id: p.id || "",
-                grade: String(p.grade || ""),
-                standard: p.standard || "",
-                title: p.title || "",
-                text: p.text || ""
-            }));
-            recentSubmissionsData = json.recentSubmissions || new Array();
-            cooldownDays = Number(json.cooldownDays) || 14;
-        } else {
-            showStatus("Failed to load initial data from Google Sheets.", "error");
+        // 2. Fetch Curriculum Prompts
+        const { data: prompts, error: promptErr } = await db
+            .from('reading_prompts')
+            .select('*');
+
+        if (studentErr || promptErr) {
+            throw new Error("Failed to query initial data from Supabase.");
         }
+
+        studentsData = students || new Array();
+        promptsData = prompts || new Array();
+
+        console.log(`Loaded ${studentsData.length} students and ${promptsData.length} prompts.`);
     } catch (err) {
-        showStatus("Error connecting to server. Check your internet connection.", "error");
+        console.error("Initial data load error:", err);
+        showStatus("Error connecting to database server.", "error");
     }
+}
+
+// ==========================================
+// 2. STUDENT SEARCH & PROMPT SELECTION
+// ==========================================
+
+// Lock in student selection when clicked or tabbed
+function selectStudent(student) {
+    const cleanName = student.name.split(",").at(0).trim();
+    const cleanGrade = student.grade.trim();
+
+    const nameInput = document.getElementById("student-name");
+    const suggestionsBox = document.getElementById("student-suggestions");
+
+    nameInput.value = cleanName;
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.classList.add("hidden");
+
+    currentSelectedStudent = {
+        name: cleanName,
+        grade: cleanGrade
+    };
+
+    const gradeBadge = document.getElementById("grade-badge");
+    if (cleanGrade) {
+        const displayGrade = cleanGrade.toLowerCase().includes("grade")
+            ? cleanGrade
+            : `${cleanGrade} Grade`;
+        gradeBadge.textContent = displayGrade;
+        gradeBadge.classList.remove("hidden");
+    } else {
+        gradeBadge.classList.add("hidden");
+    }
+
+    // Enable prompt options and fields
+    document.getElementById("prompt1-select").disabled = false;
+    document.getElementById("prompt2-select").disabled = false;
+    document.getElementById("response1-text").disabled = false;
+    document.getElementById("response2-text").disabled = false;
+    document.getElementById("submit-btn").disabled = false;
+
+    if (cleanGrade) {
+        populateGradePrompts(cleanGrade);
+    }
+}
+
+// Populate prompts filtered by student grade level
+function populateGradePrompts(grade) {
+    if (!grade) return;
+    const safeGrade = String(grade).toLowerCase().trim();
+
+    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().trim() === safeGrade);
+    const restrictedStandards = currentSelectedStudent ? getRestrictedStandards(currentSelectedStudent.name) : new Map();
+
+    const p1Select = document.getElementById("prompt1-select");
+    const p2Select = document.getElementById("prompt2-select");
+    let optionsHTML = `<option value="">-- Select a prompt --</option>`;
+
+    filteredPrompts.forEach(p => {
+        const restrictedUntil = restrictedStandards.get(p.standard);
+        if (restrictedUntil) {
+            const untilText = restrictedUntil.toLocaleDateString();
+            optionsHTML += `<option value="${p.title}" data-id="${p.id}" data-restricted="true" disabled>${p.standard}: ${p.title} (locked until ${untilText})</option>`;
+        } else {
+            optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
+        }
+    });
+
+    p1Select.innerHTML = optionsHTML;
+    p2Select.innerHTML = optionsHTML;
 }
 
 // Bind Student Name Input Events
@@ -148,101 +221,6 @@ function handleStudentNameKeydown(e) {
     }
 }
 
-// Lock in student selection when clicked or tabbed
-function selectStudent(student) {
-    const cleanName = student.name.split(",").at(0).trim();
-    const cleanGrade = student.grade.trim();
-
-    const nameInput = document.getElementById("student-name");
-    const suggestionsBox = document.getElementById("student-suggestions");
-
-    nameInput.value = cleanName;
-    suggestionsBox.innerHTML = "";
-    suggestionsBox.classList.add("hidden");
-
-    currentSelectedStudent = {
-        name: cleanName,
-        grade: cleanGrade
-    };
-
-    const gradeBadge = document.getElementById("grade-badge");
-    if (cleanGrade) {
-        const displayGrade = cleanGrade.toLowerCase().includes("grade")
-            ? cleanGrade
-            : `${cleanGrade} Grade`;
-        gradeBadge.textContent = displayGrade;
-        gradeBadge.classList.remove("hidden");
-    } else {
-        gradeBadge.classList.add("hidden");
-    }
-
-    // Enable prompt options and fields
-    document.getElementById("prompt1-select").disabled = false;
-    document.getElementById("prompt2-select").disabled = false;
-    document.getElementById("response1-text").disabled = false;
-    document.getElementById("response2-text").disabled = false;
-    document.getElementById("submit-btn").disabled = false;
-
-    if (cleanGrade) {
-        populateGradePrompts(cleanGrade);
-    }
-}
-
-// Populate prompts filtered by student grade level
-function populateGradePrompts(grade) {
-    if (!grade) return;
-    const safeGrade = String(grade).toLowerCase().trim();
-
-    const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().trim() === safeGrade);
-    const restrictedStandards = currentSelectedStudent ? getRestrictedStandards(currentSelectedStudent.name) : new Map();
-
-    const p1Select = document.getElementById("prompt1-select");
-    const p2Select = document.getElementById("prompt2-select");
-    let optionsHTML = `<option value="">-- Select a prompt --</option>`;
-
-    filteredPrompts.forEach(p => {
-        const restrictedUntil = restrictedStandards.get(p.standard);
-        if (restrictedUntil) {
-            const untilText = restrictedUntil.toLocaleDateString();
-            optionsHTML += `<option value="${p.title}" data-id="${p.id}" data-restricted="true" disabled>${p.standard}: ${p.title} (locked until ${untilText})</option>`;
-        } else {
-            optionsHTML += `<option value="${p.title}" data-id="${p.id}">${p.standard}: ${p.title}</option>`;
-        }
-    });
-
-    p1Select.innerHTML = optionsHTML;
-    p2Select.innerHTML = optionsHTML;
-}
-
-// Determine which prompt standards are still in cooldown for this student
-function getRestrictedStandards(studentName) {
-    const restricted = new Map();
-    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-
-    recentSubmissionsData.forEach(sub => {
-        if (sub.studentName !== studentName) return;
-
-        [sub.prompt1Title, sub.prompt2Title].forEach(title => {
-            const promptObj = promptsData.find(p => p.title === title);
-            if (!promptObj) return;
-
-            const submittedAt = new Date(sub.timestamp).getTime();
-            if (isNaN(submittedAt)) return;
-
-            const nextEligible = new Date(submittedAt + cooldownMs);
-            if (nextEligible.getTime() <= now) return;
-
-            const existing = restricted.get(promptObj.standard);
-            if (!existing || nextEligible > existing) {
-                restricted.set(promptObj.standard, nextEligible);
-            }
-        });
-    });
-
-    return restricted;
-}
-
 // Reset selection state
 function resetStudentSelection() {
     currentSelectedStudent = null;
@@ -261,6 +239,10 @@ function resetStudentSelection() {
     document.getElementById("prompt1-text").classList.add("hidden");
     document.getElementById("prompt2-text").classList.add("hidden");
 }
+
+// ==========================================
+// 3. STUDENT FORM SUBMISSION
+// ==========================================
 
 function bindEvents() {
     // Bind student type-ahead input & keyboard listeners
@@ -296,6 +278,61 @@ function bindEvents() {
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
 }
 
+// Submit Response Form
+async function handleFormSubmit(e) {
+    e.preventDefault();
+
+    const payload = {
+        student_name: currentSelectedStudent.name,
+        grade_level: currentSelectedStudent.grade,
+        book_title: document.getElementById("book-title").value.trim(),
+        book_author: document.getElementById("book-author").value.trim(),
+        prompt1_title: document.getElementById("prompt1-select").value,
+        response1: document.getElementById("response1-text").value.trim(),
+        prompt2_title: document.getElementById("prompt2-select").value,
+        response2: document.getElementById("response2-text").value.trim()
+    };
+
+    const { error } = await db.from('reading_responses').insert([payload]);
+
+    if (!error) {
+        showStatus("Response submitted successfully!", "success");
+        document.getElementById("response-form").reset();
+        resetStudentSelection();
+    } else {
+        showStatus("Submission error. Please try again.", "error");
+    }
+}
+
+// Determine which prompt standards are still in cooldown for this student
+function getRestrictedStandards(studentName) {
+    const restricted = new Map();
+    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    recentSubmissionsData.forEach(sub => {
+        if (sub.studentName !== studentName) return;
+
+        [sub.prompt1Title, sub.prompt2Title].forEach(title => {
+            const promptObj = promptsData.find(p => p.title === title);
+            if (!promptObj) return;
+
+            const submittedAt = new Date(sub.timestamp).getTime();
+            if (isNaN(submittedAt)) return;
+
+            const nextEligible = new Date(submittedAt + cooldownMs);
+            if (nextEligible.getTime() <= now) return;
+
+            const existing = restricted.get(promptObj.standard);
+            if (!existing || nextEligible > existing) {
+                restricted.set(promptObj.standard, nextEligible);
+            }
+        });
+    });
+
+    return restricted;
+}
+
 // Update prompt text descriptions and prevent duplicate choices
 function handlePromptSelect(promptNum) {
     const p1Select = document.getElementById("prompt1-select");
@@ -326,56 +363,26 @@ function handlePromptSelect(promptNum) {
     }
 }
 
-// Submit Response Form
-async function handleFormSubmit(e) {
-    e.preventDefault();
-    if (!currentSelectedStudent) {
-        showStatus("Please select a valid student from the roster.", "error");
-        return;
-    }
+// ==========================================
+// 4. TEACHER AUTHENTICATION & DASHBOARD
+// ==========================================
 
-    const p1Select = document.getElementById("prompt1-select");
-    const p2Select = document.getElementById("prompt2-select");
-
-    const p1Title = p1Select.value;
-    const p2Title = p2Select.value;
-
-    const payload = {
-        studentName: currentSelectedStudent.name || "",
-        gradeLevel: currentSelectedStudent.grade || "",
-        bookTitle: document.getElementById("book-title").value.trim(),
-        bookAuthor: document.getElementById("book-author").value.trim(),
-        prompt1Title: p1Title,
-        response1: document.getElementById("response1-text").value.trim(),
-        prompt2Title: p2Title,
-        response2: document.getElementById("response2-text").value.trim()
-    };
-
-    showStatus("Submitting your response...", "info");
-
+async function verifyTeacherPasscode(inputPasscode) {
     try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify(payload)
-        });
-        const json = await res.json();
+        const { data, error } = await db
+            .from('reading_settings')
+            .select('value')
+            .eq('key', 'passcode')
+            .single();
 
-        if (json.success) {
-            showStatus("Response submitted successfully! Great job!", "success");
-            // Reflect this submission locally so the cooldown applies immediately, without waiting on a refetch
-            recentSubmissionsData.push({
-                studentName: payload.studentName,
-                prompt1Title: payload.prompt1Title,
-                prompt2Title: payload.prompt2Title,
-                timestamp: new Date().toISOString()
-            });
-            document.getElementById("response-form").reset();
-            resetStudentSelection();
-        } else {
-            showStatus(`Submission error: ${json.message}`, "error");
+        if (error || !data) {
+            return inputPasscode === "1234"; // Default fallback
         }
+
+        return inputPasscode.trim() === String(data.value).trim();
     } catch (err) {
-        showStatus("Error submitting response. Please try again.", "error");
+        console.error("Passcode verification error:", err);
+        return false;
     }
 }
 
@@ -407,47 +414,33 @@ async function handleTeacherLogin() {
     }
 }
 
+// Fetch Responses for Teacher Dashboard
+async function loadTeacherResponses() {
+    showStatus("Loading student responses...", "info");
+
+    const { data: responses, error } = await db
+        .from('reading_responses')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Fetch responses error:", error);
+        showStatus("Error loading student responses.", "error");
+        return;
+    }
+
+    renderResponses(responses || new Array());
+}
+
 function handleLogout() {
     activePasscode = "";
     document.getElementById("teacher-view").classList.add("hidden");
     document.getElementById("student-view").classList.remove("hidden");
 }
 
-// Fetch Responses for Teacher Dashboard
-async function loadTeacherResponses() {
-    const container = document.getElementById("responses-container");
-    container.innerHTML = "<p>Loading student responses...</p>";
-
-    try {
-        const res = await fetch(`${API_URL}?action=getResponses&passcode=${encodeURIComponent(activePasscode)}`);
-        const json = await res.json();
-
-        if (json.success) {
-            renderResponses(json.responses || []);
-        } else {
-            container.innerHTML = `<p class="error-text">Unauthorized or error loading responses.</p>`;
-        }
-    } catch (err) {
-        container.innerHTML = `<p class="error-text">Failed to fetch responses.</p>`;
-    }
-}
-
-// Reading Response Rubric (6-10 point scale)
-const RUBRIC = [
-    { score: 6, label: "Incomplete / Off-Topic", desc: "Misses the point of the prompt entirely, is completely off-topic, or is so short it doesn't show any real effort or reading." },
-    { score: 7, label: "Minimal Effort", desc: "Barely answers the question. Very short, missing key details, and lacks any text support. Feels rushed." },
-    { score: 8, label: "Developing", desc: "Answers the prompt, but the response is a bit basic or brief. Missing strong text evidence or relies on vague summaries instead of specific book details." },
-    { score: 9, label: "Proficient", desc: "Answers the prompt correctly and clearly. Includes good examples or details from the book, though maybe not quite as detailed as a 10. Shows solid understanding." },
-    { score: 10, label: "Outstanding", desc: "Fully answers all parts of the prompt with deep thought. Uses strong, specific text evidence, quotes, or examples to back up the answer. Shows exceptional effort and high-quality writing." }
-];
-
-function renderRubricRow(responseId, promptNum, currentScore) {
-    const buttons = RUBRIC.map(r => {
-        const isSelected = Number(currentScore) === r.score;
-        return `<button type="button" class="rubric-btn${isSelected ? " selected" : ""}" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-score="${r.score}" data-tooltip="${escapeHtml(r.label)}: ${escapeHtml(r.desc)}">${r.score}</button>`;
-    }).join("");
-    return `<div class="rubric-row">${buttons}</div>`;
-}
+// ==========================================
+// 5. DASHBOARD RENDERING & EVALUATIONS
+// ==========================================
 
 function renderCommentBlock(responseId, promptNum, currentComment) {
     return `<div class="comment-block">
@@ -519,6 +512,47 @@ function renderResponses(responses) {
     });
 }
 
+async function saveScoreAndComment(responseId, scoreNum, scoreVal, commentVal) {
+    const updatePayload = {};
+
+    if (scoreNum === 1) {
+        if (scoreVal !== null) updatePayload.score1 = scoreVal;
+        if (commentVal !== null) updatePayload.comment1 = commentVal;
+    } else if (scoreNum === 2) {
+        if (scoreVal !== null) updatePayload.score2 = scoreVal;
+        if (commentVal !== null) updatePayload.comment2 = commentVal;
+    }
+
+    const { error } = await db
+        .from('reading_responses')
+        .update(updatePayload)
+        .eq('id', responseId);
+
+    if (error) {
+        console.error("Evaluation update error:", error);
+        showStatus("Failed to save evaluation.", "error");
+    } else {
+        showStatus("Saved feedback!", "success");
+    }
+}
+
+// Reading Response Rubric (6-10 point scale)
+const RUBRIC = [
+    { score: 6, label: "Incomplete / Off-Topic", desc: "Misses the point of the prompt entirely, is completely off-topic, or is so short it doesn't show any real effort or reading." },
+    { score: 7, label: "Minimal Effort", desc: "Barely answers the question. Very short, missing key details, and lacks any text support. Feels rushed." },
+    { score: 8, label: "Developing", desc: "Answers the prompt, but the response is a bit basic or brief. Missing strong text evidence or relies on vague summaries instead of specific book details." },
+    { score: 9, label: "Proficient", desc: "Answers the prompt correctly and clearly. Includes good examples or details from the book, though maybe not quite as detailed as a 10. Shows solid understanding." },
+    { score: 10, label: "Outstanding", desc: "Fully answers all parts of the prompt with deep thought. Uses strong, specific text evidence, quotes, or examples to back up the answer. Shows exceptional effort and high-quality writing." }
+];
+
+function renderRubricRow(responseId, promptNum, currentScore) {
+    const buttons = RUBRIC.map(r => {
+        const isSelected = Number(currentScore) === r.score;
+        return `<button type="button" class="rubric-btn${isSelected ? " selected" : ""}" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-score="${r.score}" data-tooltip="${escapeHtml(r.label)}: ${escapeHtml(r.desc)}">${r.score}</button>`;
+    }).join("");
+    return `<div class="rubric-row">${buttons}</div>`;
+}
+
 // Route clicks within the responses list to the rubric or delete handlers
 function handleResponsesContainerClick(e) {
     if (e.target.closest(".rubric-btn")) {
@@ -527,6 +561,40 @@ function handleResponsesContainerClick(e) {
         handleDeleteResponse(e);
     } else if (e.target.closest(".save-comment-btn")) {
         handleSaveComment(e);
+    }
+}
+
+// Permanently delete a response card, both on screen and in the Google Sheet
+async function handleDeleteResponse(e) {
+    const btn = e.target.closest(".delete-response-btn");
+    if (!btn || btn.disabled) return;
+
+    if (!confirm("Delete this response permanently? This cannot be undone.")) return;
+
+    const responseId = btn.dataset.responseId;
+    const card = btn.closest(".response-card");
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "deleteResponse",
+                passcode: activePasscode,
+                responseId
+            })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            card.remove();
+        } else {
+            alert(`Failed to delete response: ${json.message || "Unknown error"}`);
+            btn.disabled = false;
+        }
+    } catch (err) {
+        alert("Failed to delete response. Check your connection.");
+        btn.disabled = false;
     }
 }
 
@@ -607,76 +675,22 @@ async function handleSaveComment(e) {
     }
 }
 
-// Permanently delete a response card, both on screen and in the Google Sheet
-async function handleDeleteResponse(e) {
-    const btn = e.target.closest(".delete-response-btn");
-    if (!btn || btn.disabled) return;
-
-    if (!confirm("Delete this response permanently? This cannot be undone.")) return;
-
-    const responseId = btn.dataset.responseId;
-    const card = btn.closest(".response-card");
-    btn.disabled = true;
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "deleteResponse",
-                passcode: activePasscode,
-                responseId
-            })
-        });
-        const json = await res.json();
-
-        if (json.success) {
-            card.remove();
-        } else {
-            alert(`Failed to delete response: ${json.message || "Unknown error"}`);
-            btn.disabled = false;
-        }
-    } catch (err) {
-        alert("Failed to delete response. Check your connection.");
-        btn.disabled = false;
-    }
-}
+// ==========================================
+// 6. ROSTER MANAGEMENT & EXPORTS
+// ==========================================
 
 // Add New Student
-async function handleAddStudent(e) {
-    e.preventDefault();
-    const name = document.getElementById("new-student-name").value.trim();
-    const grade = document.getElementById("new-student-grade").value;
-    const statusBox = document.getElementById("add-student-status");
+async function handleAddStudent(name, grade) {
+    const { error } = await db
+        .from('reading_students')
+        .insert([{ name: name.trim(), grade: grade.trim() }]);
 
-    const payload = {
-        action: "addStudent",
-        passcode: activePasscode,
-        studentName: name,
-        gradeLevel: grade
-    };
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-
-        if (json.success) {
-            statusBox.textContent = `Student "${name}" added successfully!`;
-            statusBox.className = "status-box success";
-            statusBox.classList.remove("hidden");
-            document.getElementById("add-student-form").reset();
-            await loadInitialData(); // Refresh roster
-        } else {
-            statusBox.textContent = `Error: ${json.message}`;
-            statusBox.className = "status-box error";
-            statusBox.classList.remove("hidden");
-        }
-    } catch (err) {
-        statusBox.textContent = "Failed to add student.";
-        statusBox.className = "status-box error";
-        statusBox.classList.remove("hidden");
+    if (!error) {
+        showStatus(`Added ${name} (${grade}) to roster.`, "success");
+        await loadInitialData(); // Refresh local roster
+    } else {
+        console.error("Add student error:", error);
+        showStatus("Failed to add student to roster.", "error");
     }
 }
 
@@ -695,4 +709,59 @@ function escapeHtml(str) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+}
+
+// Export loaded responses to CSV for teacher gradebooks
+function exportResponsesToCsv() {
+  if (!allFetchedResponses || allFetchedResponses.length === 0) {
+    showStatus("No responses available to export.", "error");
+    return;
+  }
+
+  const headers = [
+    "Timestamp",
+    "Student Name",
+    "Grade Level",
+    "Book Title",
+    "Book Author",
+    "Prompt 1 Title",
+    "Response 1",
+    "Score 1",
+    "Comment 1",
+    "Prompt 2 Title",
+    "Response 2",
+    "Score 2",
+    "Comment 2"
+  ];
+
+  const csvRows = [];
+  csvRows.push(headers.join(","));
+
+  allFetchedResponses.forEach(r => {
+    const row = [
+      `"${String(r.created_at || r.timestamp || '').replace(/"/g, '""')}"`,
+      `"${String(r.student_name || r.studentName || '').replace(/"/g, '""')}"`,
+      `"${String(r.grade_level || r.gradeLevel || '').replace(/"/g, '""')}"`,
+      `"${String(r.book_title || r.bookTitle || '').replace(/"/g, '""')}"`,
+      `"${String(r.book_author || r.bookAuthor || '').replace(/"/g, '""')}"`,
+      `"${String(r.prompt1_title || r.prompt1Title || '').replace(/"/g, '""')}"`,
+      `"${String(r.response1 || '').replace(/"/g, '""')}"`,
+      `"${r.score1 !== null && r.score1 !== undefined ? r.score1 : ''}"`,
+      `"${String(r.comment1 || '').replace(/"/g, '""')}"`,
+      `"${String(r.prompt2_title || r.prompt2Title || '').replace(/"/g, '""')}"`,
+      `"${String(r.response2 || '').replace(/"/g, '""')}"`,
+      `"${r.score2 !== null && r.score2 !== undefined ? r.score2 : ''}"`,
+      `"${String(r.comment2 || '').replace(/"/g, '""')}"`
+    ];
+    csvRows.push(row.join(","));
+  });
+
+  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `reading_responses_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
