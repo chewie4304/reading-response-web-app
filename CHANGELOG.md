@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added keyboard support to the Teacher Access passcode modal, allowing teacher to press the **Enter** key to log into the Teacher Dashboard directly without clicking "Access Dashboard."
 - Added dynamic save status indicators (**"Saved"** / **"Not Saved"**) beside teacher comment fields to reflect edit state in real time.
+- Added prompt hover tooltips/textboxes on Teacher Dashboard response cards, allowing teachers to view full prompt text by hovering over prompt titles.
 
 ## Changed
 - Updated the "Save Comment" button on Teacher Dashboard cards to react to click events and provide immediate visual status confirmation upon saving to Supabase.
