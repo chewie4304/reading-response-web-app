@@ -138,7 +138,7 @@ function handleStudentNameKeydown(e) {
     }
 }
 
-function selectStudent(student) {
+async function selectStudent(student) {
     const cleanName = student.name.split(",").at(0).trim();
     const cleanGrade = student.grade.trim();
 
@@ -171,12 +171,19 @@ function selectStudent(student) {
     document.getElementById("response2-text").disabled = false;
     document.getElementById("submit-btn").disabled = false;
 
+    // Fetch recent student responses from Supabase to calculate 14-day cooldown locks
+    const { data: history } = await db
+        .from('reading_responses')
+        .select('*')
+        .eq('student_name', cleanName);
+
+    recentSubmissionsData = history || [];
+
     if (cleanGrade) {
         populateGradePrompts(cleanGrade);
     }
 
     loadStudentHistory(cleanName);
-
 }
 
 function populateGradePrompts(grade) {
@@ -252,9 +259,17 @@ function bindEvents() {
     });
 
     document.getElementById("verify-passcode-btn").addEventListener("click", handleTeacherLogin);
+    document.getElementById("passcode-input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            handleTeacherLogin();
+        }
+    });
     document.getElementById("logout-btn").addEventListener("click", handleLogout);
     document.getElementById("refresh-responses-btn").addEventListener("click", loadTeacherResponses);
-    document.getElementById("responses-container").addEventListener("click", handleResponsesContainerClick);
+    const responsesContainer = document.getElementById("responses-container");
+    responsesContainer.addEventListener("click", handleResponsesContainerClick);
+    responsesContainer.addEventListener("input", handleCommentInput);
 
     document.getElementById("add-student-toggle-btn").addEventListener("click", () => {
         document.getElementById("add-student-panel").classList.toggle("hidden");
@@ -270,17 +285,23 @@ function bindEvents() {
 
 function getRestrictedStandards(studentName) {
     const restricted = new Map();
-    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
+    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000; // 14-day cooldown
     const now = Date.now();
 
     recentSubmissionsData.forEach(sub => {
-        if (sub.studentName !== studentName) return;
+        const sName = sub.student_name || sub.studentName;
+        if (sName !== studentName) return;
 
-        [sub.prompt1Title, sub.prompt2Title].forEach(title => {
+        const p1 = sub.prompt1_title || sub.prompt1Title;
+        const p2 = sub.prompt2_title || sub.prompt2Title;
+        const rawDate = sub.created_at || sub.timestamp;
+
+        [p1, p2].forEach(title => {
+            if (!title) return;
             const promptObj = promptsData.find(p => p.title === title);
             if (!promptObj) return;
 
-            const submittedAt = new Date(sub.timestamp).getTime();
+            const submittedAt = new Date(rawDate).getTime();
             if (isNaN(submittedAt)) return;
 
             const nextEligible = new Date(submittedAt + cooldownMs);
@@ -446,12 +467,20 @@ function renderRubricRow(responseId, promptNum, currentScore) {
 }
 
 function renderCommentBlock(responseId, promptNum, currentComment) {
+        const savedComment = String(currentComment || "").trim();
     return `<div class="comment-block">
     <label>Teacher Comment</label>
-    <textarea class="comment-textarea" rows="2" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" placeholder="Add feedback for this response...">${escapeHtml(currentComment || "")}</textarea>
+        <textarea class="comment-textarea" rows="2" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}" data-saved-comment="${escapeHtml(savedComment)}" placeholder="Add feedback for this response...">${escapeHtml(currentComment || "")}</textarea>
     <button type="button" class="secondary-btn save-comment-btn" data-response-id="${escapeHtml(responseId)}" data-prompt-num="${promptNum}">Save Comment</button>
-    <span class="comment-saved-msg hidden">Saved!</span>
+        <span class="comment-status">Saved</span>
   </div>`;
+}
+
+function getPromptDescription(title, gradeLevel) {
+        const normalizeGrade = grade => String(grade || "").toLowerCase().replace("grade", "").trim();
+        const matchingPrompts = promptsData.filter(prompt => prompt.title === title);
+        const matchingGradePrompt = matchingPrompts.find(prompt => normalizeGrade(prompt.grade) === normalizeGrade(gradeLevel));
+        return (matchingGradePrompt || matchingPrompts[0])?.text || "";
 }
 
 function renderResponses(responses) {
@@ -484,9 +513,11 @@ function renderResponses(responses) {
         const bAuthor = (resp.book_author || resp.bookAuthor) ? ` by ${resp.book_author || resp.bookAuthor}` : "";
 
         const p1Title = resp.prompt1_title || resp.prompt1Title || "Prompt 1";
+        const p1Description = getPromptDescription(p1Title, resp.grade_level || resp.gradeLevel);
         const r1Text = resp.response1 || "No response provided.";
 
         const p2Title = resp.prompt2_title || resp.prompt2Title || "Prompt 2";
+        const p2Description = getPromptDescription(p2Title, resp.grade_level || resp.gradeLevel);
         const r2Text = resp.response2 || "No response provided.";
 
         card.innerHTML = `
@@ -497,13 +528,13 @@ function renderResponses(responses) {
       </div>
       <p class="book-info">📖 <em>${escapeHtml(bTitle)}</em>${escapeHtml(bAuthor)}</p>
       <div class="resp-block">
-        <strong>${escapeHtml(p1Title)}</strong>
+                <strong${p1Description ? ` class="prompt-title-tooltip" data-tooltip="${escapeHtml(p1Description)}"` : ""}>${escapeHtml(p1Title)}</strong>
         <p>${escapeHtml(r1Text)}</p>
         ${renderRubricRow(responseId, 1, resp.score1)}
         ${renderCommentBlock(responseId, 1, resp.comment1)}
       </div>
       <div class="resp-block">
-        <strong>${escapeHtml(p2Title)}</strong>
+                <strong${p2Description ? ` class="prompt-title-tooltip" data-tooltip="${escapeHtml(p2Description)}"` : ""}>${escapeHtml(p2Title)}</strong>
         <p>${escapeHtml(r2Text)}</p>
         ${renderRubricRow(responseId, 2, resp.score2)}
         ${renderCommentBlock(responseId, 2, resp.comment2)}
@@ -522,6 +553,17 @@ function handleResponsesContainerClick(e) {
     } else if (e.target.closest(".save-comment-btn")) {
         handleSaveComment(e);
     }
+}
+
+function handleCommentInput(e) {
+    const textarea = e.target.closest(".comment-textarea");
+    if (!textarea) return;
+
+    const status = textarea.closest(".comment-block").querySelector(".comment-status");
+    const isSaved = textarea.value.trim() === textarea.dataset.savedComment;
+    status.textContent = isSaved ? "Saved" : "Not Saved";
+    status.classList.toggle("not-saved", !isSaved);
+    status.classList.remove("save-error");
 }
 
 async function handleDeleteResponse(e) {
@@ -566,22 +608,41 @@ async function handleRubricClick(e) {
 
 async function handleSaveComment(e) {
     const btn = e.target.closest(".save-comment-btn");
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
 
     const responseId = btn.dataset.responseId;
     const promptNum = Number(btn.dataset.promptNum);
     const block = btn.closest(".comment-block");
     const textarea = block.querySelector(".comment-textarea");
-    const savedMsg = block.querySelector(".comment-saved-msg");
+    const status = block.querySelector(".comment-status");
     const comment = textarea.value.trim();
+    const originalButtonText = btn.textContent;
 
     btn.disabled = true;
+    btn.textContent = "Saving...";
+    btn.classList.add("is-saving");
+    textarea.disabled = true;
 
-    await saveScoreAndComment(responseId, promptNum, null, comment);
+    let saved = false;
+    try {
+        saved = await saveScoreAndComment(responseId, promptNum, null, comment);
+    } catch (error) {
+        console.error("Comment save error:", error);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalButtonText;
+        btn.classList.remove("is-saving");
+        textarea.disabled = false;
+    }
 
-    savedMsg.classList.remove("hidden");
-    setTimeout(() => savedMsg.classList.add("hidden"), 2000);
-    btn.disabled = false;
+    if (saved) {
+        textarea.dataset.savedComment = comment;
+        status.textContent = "Saved";
+        status.classList.remove("not-saved", "save-error");
+    } else {
+        status.textContent = "Save failed";
+        status.classList.add("save-error");
+    }
 }
 
 async function saveScoreAndComment(responseId, scoreNum, scoreVal, commentVal) {
@@ -602,9 +663,11 @@ async function saveScoreAndComment(responseId, scoreNum, scoreVal, commentVal) {
 
     if (error) {
         console.error("Evaluation update error:", error);
-        showStatus("Failed to save evaluation.", "error");
+        showStatus(commentVal !== null ? "Failed to save comment." : "Failed to save evaluation.", "error");
+        return false;
     } else {
         showStatus("Saved feedback!", "success");
+        return true;
     }
 }
 
