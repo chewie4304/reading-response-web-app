@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-12
+
+### Fixed
+- Fixed prompt cooldown blocking so restrictions apply to specific prompt choices rather than entire standards, preventing unchosen prompts sharing a standard (e.g., "Escalating the Conflict" when "Character Complexity" was selected) from becoming locked.
+- Fixed prompt cooldown lookup bug where cross-grade prompt titles (e.g., "The Just-the-Facts Summary") incorrectly resolved to 6th-grade standards, failing to lock prompts for 7th and 8th graders.
+- Automatically refresh prompt cooldown locks and available dropdown options immediately when a student deletes an ungraded response.
+- Removed duplicate `loadStudentHistory` function definition in `app.js`.
+
 ## [1.2.0] - 2026-10-05
 
 ### Added

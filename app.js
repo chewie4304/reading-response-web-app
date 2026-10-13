@@ -190,7 +190,7 @@ function populateGradePrompts(grade) {
     if (!grade) return;
     const safeGrade = String(grade).toLowerCase().replace("grade", "").trim();
     const filteredPrompts = promptsData.filter(p => p.grade.toLowerCase().replace("grade", "").trim() === safeGrade);
-    const restrictedStandards = currentSelectedStudent ? getRestrictedStandards(currentSelectedStudent.name) : new Map();
+    const restrictedPrompts = currentSelectedStudent ? getRestrictedPrompts(currentSelectedStudent.name) : new Map();
 
     const p1Select = document.getElementById("prompt1-select");
     const p2Select = document.getElementById("prompt2-select");
@@ -198,7 +198,7 @@ function populateGradePrompts(grade) {
     let optionsHTML = `<option value="">-- Select a prompt --</option>`;
 
     filteredPrompts.forEach(p => {
-        const restrictedUntil = restrictedStandards.get(p.standard);
+        const restrictedUntil = restrictedPrompts.get(p.title.trim());
         if (restrictedUntil) {
             const untilText = restrictedUntil.toLocaleDateString();
             optionsHTML += `<option value="${p.title}" data-id="${p.id}" data-restricted="true" disabled>${p.standard}: ${p.title} (locked until ${untilText})</option>`;
@@ -283,7 +283,7 @@ function bindEvents() {
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
 }
 
-function getRestrictedStandards(studentName) {
+function getRestrictedPrompts(studentName) {
     const restricted = new Map();
     const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000; // 14-day cooldown
     const now = Date.now();
@@ -298,8 +298,6 @@ function getRestrictedStandards(studentName) {
 
         [p1, p2].forEach(title => {
             if (!title) return;
-            const promptObj = promptsData.find(p => p.title === title);
-            if (!promptObj) return;
 
             const submittedAt = new Date(rawDate).getTime();
             if (isNaN(submittedAt)) return;
@@ -307,9 +305,10 @@ function getRestrictedStandards(studentName) {
             const nextEligible = new Date(submittedAt + cooldownMs);
             if (nextEligible.getTime() <= now) return;
 
-            const existing = restricted.get(promptObj.standard);
+            const trimmedTitle = title.trim();
+            const existing = restricted.get(trimmedTitle);
             if (!existing || nextEligible > existing) {
-                restricted.set(promptObj.standard, nextEligible);
+                restricted.set(trimmedTitle, nextEligible);
             }
         });
     });
@@ -354,14 +353,27 @@ async function handleFormSubmit(e) {
         return;
     }
 
+    const p1 = document.getElementById("prompt1-select").value;
+    const p2 = document.getElementById("prompt2-select").value;
+
+    if (!p1 || !p2) {
+        showStatus("Please select both prompts before submitting.", "error");
+        return;
+    }
+
+    if (p1 === p2) {
+        showStatus("Please choose two different prompts.", "error");
+        return;
+    }
+
     const payload = {
         student_name: currentSelectedStudent.name,
         grade_level: currentSelectedStudent.grade,
         book_title: document.getElementById("book-title").value.trim(),
         book_author: document.getElementById("book-author").value.trim(),
-        prompt1_title: document.getElementById("prompt1-select").value,
+        prompt1_title: p1,
         response1: document.getElementById("response1-text").value.trim(),
-        prompt2_title: document.getElementById("prompt2-select").value,
+        prompt2_title: p2,
         response2: document.getElementById("response2-text").value.trim()
     };
 
@@ -781,14 +793,20 @@ async function handleResetPasscode() {
 // 7. STUDENT HISTORY & FEEDBACK VIEW
 // ==========================================
 
+let currentStudentRecords = [];
+
 async function loadStudentHistory(studentName) {
     const panel = document.getElementById("student-history-panel");
     const container = document.getElementById("history-container");
     const countSpan = document.getElementById("history-count");
+    const toggleBtn = document.getElementById("toggle-history-btn");
 
     if (!panel || !container) return;
 
     panel.classList.remove("hidden");
+    container.classList.remove("hidden");
+    if (toggleBtn) toggleBtn.textContent = "Hide";
+
     container.innerHTML = "<p>Loading your past submissions...</p>";
 
     const { data: history, error } = await db
@@ -803,9 +821,9 @@ async function loadStudentHistory(studentName) {
         return;
     }
 
-    const records = history || [];
-    if (countSpan) countSpan.textContent = records.length;
-    renderStudentHistory(records);
+    currentStudentRecords = history || [];
+    if (countSpan) countSpan.textContent = currentStudentRecords.length;
+    renderStudentHistory(currentStudentRecords);
 }
 
 function renderStudentHistory(records) {
@@ -1113,41 +1131,6 @@ function exportResponsesToCsv() {
     document.body.removeChild(link);
 }
 
-// Global memory store for active student history records
-let currentStudentRecords = [];
-
-// Store raw history records when fetched
-async function loadStudentHistory(studentName) {
-    const panel = document.getElementById("student-history-panel");
-    const container = document.getElementById("history-container");
-    const countSpan = document.getElementById("history-count");
-    const toggleBtn = document.getElementById("toggle-history-btn");
-
-    if (!panel || !container) return;
-
-    panel.classList.remove("hidden");
-    container.classList.remove("hidden");
-    if (toggleBtn) toggleBtn.textContent = "Hide";
-
-    container.innerHTML = "<p>Loading your past submissions...</p>";
-
-    const { data: history, error } = await db
-        .from('reading_responses')
-        .select('*')
-        .eq('student_name', studentName)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error("Fetch student history error:", error);
-        container.innerHTML = "<p>Unable to load submission history.</p>";
-        return;
-    }
-
-    currentStudentRecords = history || [];
-    if (countSpan) countSpan.textContent = currentStudentRecords.length;
-    renderStudentHistory(currentStudentRecords);
-}
-
 // Student History Container Click Delegator (Edit / Delete)
 document.getElementById("history-container")?.addEventListener("click", async (e) => {
     const deleteBtn = e.target.closest(".student-delete-btn");
@@ -1164,6 +1147,14 @@ document.getElementById("history-container")?.addEventListener("click", async (e
             if (!error) {
                 showStatus("Submission deleted successfully.", "success");
                 if (currentSelectedStudent) {
+                    const { data: history } = await db
+                        .from('reading_responses')
+                        .select('*')
+                        .eq('student_name', currentSelectedStudent.name);
+                    recentSubmissionsData = history || [];
+                    if (currentSelectedStudent.grade) {
+                        populateGradePrompts(currentSelectedStudent.grade);
+                    }
                     await loadStudentHistory(currentSelectedStudent.name);
                     await loadInitialData();
                 }
