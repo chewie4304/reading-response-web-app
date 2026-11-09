@@ -56,24 +56,24 @@ async function loadInitialData() {
 // ==========================================
 // 2. STUDENT SEARCH & PROMPT SELECTION
 // ==========================================
-function bindStudentNameEvents() {
-    const nameInput = document.getElementById("student-name");
+function bindStudentNameEvents(inputId, suggestionsId, onSelect) {
+    const nameInput = document.getElementById(inputId);
     if (!nameInput) return;
 
-    nameInput.addEventListener("input", handleStudentNameChange);
-    nameInput.addEventListener("keydown", handleStudentNameKeydown);
+    nameInput.addEventListener("input", (e) => handleStudentNameChange(e, suggestionsId, onSelect));
+    nameInput.addEventListener("keydown", (e) => handleStudentNameKeydown(e, suggestionsId, onSelect));
 
     document.addEventListener("click", (e) => {
         if (e.target !== nameInput) {
-            const suggestionsBox = document.getElementById("student-suggestions");
+            const suggestionsBox = document.getElementById(suggestionsId);
             if (suggestionsBox) suggestionsBox.classList.add("hidden");
         }
     });
 }
 
-function handleStudentNameChange(e) {
+function handleStudentNameChange(e, suggestionsId, onSelect) {
     const typedValue = e.target.value.trim().toLowerCase();
-    const suggestionsBox = document.getElementById("student-suggestions");
+    const suggestionsBox = document.getElementById(suggestionsId);
     selectedIndex = -1;
 
     if (typedValue.length < 2) {
@@ -90,7 +90,7 @@ function handleStudentNameChange(e) {
     });
 
     if (currentMatches.length > 0) {
-        renderSuggestions();
+        renderSuggestions(suggestionsBox, onSelect);
     } else {
         suggestionsBox.innerHTML = "";
         suggestionsBox.classList.add("hidden");
@@ -98,8 +98,7 @@ function handleStudentNameChange(e) {
     }
 }
 
-function renderSuggestions() {
-    const suggestionsBox = document.getElementById("student-suggestions");
+function renderSuggestions(suggestionsBox, onSelect) {
     suggestionsBox.innerHTML = "";
 
     currentMatches.forEach((student, idx) => {
@@ -107,15 +106,15 @@ function renderSuggestions() {
         const item = document.createElement("div");
         item.className = idx === selectedIndex ? "suggestion-item active" : "suggestion-item";
         item.textContent = cleanName;
-        item.addEventListener("click", () => selectStudent(student));
+        item.addEventListener("click", () => onSelect(student));
         suggestionsBox.appendChild(item);
     });
 
     suggestionsBox.classList.remove("hidden");
 }
 
-function handleStudentNameKeydown(e) {
-    const suggestionsBox = document.getElementById("student-suggestions");
+function handleStudentNameKeydown(e, suggestionsId, onSelect) {
+    const suggestionsBox = document.getElementById(suggestionsId);
     if (suggestionsBox.classList.contains("hidden") || currentMatches.length === 0) {
         return;
     }
@@ -123,17 +122,17 @@ function handleStudentNameKeydown(e) {
     if (e.key === "ArrowDown") {
         e.preventDefault();
         selectedIndex = selectedIndex < currentMatches.length - 1 ? selectedIndex + 1 : 0;
-        renderSuggestions();
+        renderSuggestions(suggestionsBox, onSelect);
     } else if (e.key === "ArrowUp") {
         e.preventDefault();
         selectedIndex = selectedIndex > 0 ? selectedIndex - 1 : currentMatches.length - 1;
-        renderSuggestions();
+        renderSuggestions(suggestionsBox, onSelect);
     } else if (e.key === "Tab" || e.key === "Enter") {
         const targetIdx = selectedIndex >= 0 ? selectedIndex : 0;
         const chosenStudent = currentMatches.at(targetIdx);
         if (chosenStudent) {
             if (e.key === "Enter") e.preventDefault();
-            selectStudent(chosenStudent);
+            onSelect(chosenStudent);
         }
     }
 }
@@ -184,6 +183,14 @@ async function selectStudent(student) {
     }
 
     loadStudentHistory(cleanName);
+    loadStudentLog(cleanName);
+}
+
+function handleLoginStudentSelect(student) {
+    document.getElementById("login-view").classList.add("hidden");
+    document.getElementById("student-view").classList.remove("hidden");
+    document.getElementById("teacher-access-btn").classList.remove("invisible");
+    selectStudent(student);
 }
 
 function populateGradePrompts(grade) {
@@ -232,6 +239,7 @@ function resetStudentSelection() {
 
     // Hide history panel when student selection is reset
     document.getElementById("student-history-panel")?.classList.add("hidden");
+    document.getElementById("student-log-panel")?.classList.add("hidden");
 
 }
 
@@ -239,7 +247,8 @@ function resetStudentSelection() {
 // 3. STUDENT FORM SUBMISSION & COOLDOWNS
 // ==========================================
 function bindEvents() {
-    bindStudentNameEvents();
+    bindStudentNameEvents("student-name", "student-suggestions", selectStudent);
+    bindStudentNameEvents("login-student-name", "login-student-suggestions", handleLoginStudentSelect);
     bindPasscodeManagementEvents();
 
     const p1Select = document.getElementById("prompt1-select");
@@ -250,9 +259,9 @@ function bindEvents() {
     p2Select.addEventListener("change", () => handlePromptSelect(2));
     form.addEventListener("submit", handleFormSubmit);
 
-    document.getElementById("teacher-access-btn").addEventListener("click", () => {
-        document.getElementById("passcode-modal").classList.remove("hidden");
-    });
+    document.getElementById("teacher-access-btn").addEventListener("click", openPasscodeModal);
+
+    document.getElementById("login-teacher-btn").addEventListener("click", openPasscodeModal);
 
     document.getElementById("close-modal-btn").addEventListener("click", () => {
         document.getElementById("passcode-modal").classList.add("hidden");
@@ -271,16 +280,41 @@ function bindEvents() {
     responsesContainer.addEventListener("click", handleResponsesContainerClick);
     responsesContainer.addEventListener("input", handleCommentInput);
 
+    const detailResponsesContainer = document.getElementById("detail-responses-container");
+    detailResponsesContainer.addEventListener("click", handleResponsesContainerClick);
+    detailResponsesContainer.addEventListener("input", handleCommentInput);
+
     document.getElementById("add-student-toggle-btn").addEventListener("click", () => {
         document.getElementById("add-student-panel").classList.toggle("hidden");
     });
 
     // Inside bindEvents()
     document.getElementById("toggle-history-btn")?.addEventListener("click", () => {
-        document.getElementById("history-container")?.classList.toggle("hidden");
+        const container = document.getElementById("history-container");
+        const toggleBtn = document.getElementById("toggle-history-btn");
+        if (!container || !toggleBtn) return;
+        container.classList.toggle("hidden");
+        toggleBtn.textContent = container.classList.contains("hidden") ? "Show" : "Hide";
+    });
+
+    document.getElementById("toggle-log-btn")?.addEventListener("click", () => {
+        const container = document.getElementById("student-log-container");
+        const toggleBtn = document.getElementById("toggle-log-btn");
+        if (!container || !toggleBtn) return;
+        container.classList.toggle("hidden");
+        toggleBtn.textContent = container.classList.contains("hidden") ? "Show" : "Hide";
     });
 
     document.getElementById("add-student-form").addEventListener("submit", handleAddStudent);
+
+    const logDateInput = document.getElementById("log-date");
+    if (logDateInput) logDateInput.value = new Date().toLocaleDateString("en-CA");
+    document.getElementById("reading-log-form")?.addEventListener("submit", handleReadingLogSubmit);
+
+    document.getElementById("back-to-dashboard-btn")?.addEventListener("click", () => {
+        document.getElementById("student-detail-view").classList.add("hidden");
+        document.getElementById("teacher-view").classList.remove("hidden");
+    });
 }
 
 function getRestrictedPrompts(studentName) {
@@ -384,6 +418,7 @@ async function handleFormSubmit(e) {
     if (!error) {
         showStatus("Response submitted successfully!", "success");
         document.getElementById("response-form").reset();
+        document.getElementById("student-name").value = "";
         resetStudentSelection();
         await loadInitialData();
     } else {
@@ -392,9 +427,247 @@ async function handleFormSubmit(e) {
     }
 }
 
+function showLogStatus(message, type) {
+    const statusBox = document.getElementById("log-status-message");
+    if (!statusBox) return;
+    statusBox.textContent = message;
+    statusBox.className = `status-box ${type}`;
+}
+
+async function handleReadingLogSubmit(e) {
+    e.preventDefault();
+
+    if (!currentSelectedStudent) {
+        showLogStatus("Please select your name before adding a log entry.", "error");
+        return;
+    }
+
+    const pageStart = Number(document.getElementById("log-page-start").value);
+    const pageEnd = Number(document.getElementById("log-page-end").value);
+
+    if (pageEnd < pageStart) {
+        showLogStatus("The ending page must be the same as or after the starting page.", "error");
+        return;
+    }
+
+    const payload = {
+        student_name: currentSelectedStudent.name,
+        log_date: document.getElementById("log-date").value,
+        book_title: document.getElementById("log-title").value.trim(),
+        minutes_read: Number(document.getElementById("log-time").value),
+        page_start: pageStart,
+        page_end: pageEnd
+    };
+
+    showLogStatus("Saving log entry...", "info");
+
+    const { error } = await db.from('reading_log').insert([payload]);
+
+    if (!error) {
+        showLogStatus("Log entry saved!", "success");
+        document.getElementById("reading-log-form").reset();
+        document.getElementById("log-date").value = new Date().toLocaleDateString("en-CA");
+        await loadStudentLog(currentSelectedStudent.name);
+    } else {
+        console.error("Reading log error:", error);
+        showLogStatus("Unable to save log entry. Please try again.", "error");
+    }
+}
+
+async function loadStudentLog(studentName) {
+    const panel = document.getElementById("student-log-panel");
+    const container = document.getElementById("student-log-container");
+    const countSpan = document.getElementById("log-count");
+    const toggleBtn = document.getElementById("toggle-log-btn");
+
+    if (!panel || !container) return;
+
+    // Auto-collapse the log list when the panel first appears for a newly
+    // selected student; refreshes (add/edit/delete) preserve the toggle state.
+    const isFirstLoad = panel.classList.contains("hidden");
+    panel.classList.remove("hidden");
+    if (isFirstLoad) {
+        container.classList.add("hidden");
+        if (toggleBtn) toggleBtn.textContent = "Show";
+    }
+
+    container.innerHTML = "<p>Loading your reading log...</p>";
+
+    const { data: entries, error } = await db
+        .from('reading_log')
+        .select('*')
+        .eq('student_name', studentName)
+        .order('log_date', { ascending: false });
+
+    if (error) {
+        console.error("Fetch student log error:", error);
+        container.innerHTML = "<p>Unable to load reading log.</p>";
+        return;
+    }
+
+    currentStudentLogEntries = entries || [];
+    if (countSpan) countSpan.textContent = currentStudentLogEntries.length;
+    renderStudentLogEntries(currentStudentLogEntries);
+}
+
+function renderStudentLogEntries(entries) {
+    const container = document.getElementById("student-log-container");
+    if (!container) return;
+
+    if (entries.length === 0) {
+        container.innerHTML = "<p style='color: var(--muted); font-size: 0.9rem;'>No reading log entries yet.</p>";
+        return;
+    }
+
+    const weekTotals = new Map();
+    entries.forEach(entry => {
+        const key = getWeekKey(entry.log_date);
+        if (!key) return;
+        const totals = weekTotals.get(key) || { minutes: 0, pages: 0 };
+        totals.minutes += Number(entry.minutes_read) || 0;
+        totals.pages += (Number(entry.page_end) || 0) - (Number(entry.page_start) || 0) + 1;
+        weekTotals.set(key, totals);
+    });
+
+    let html = "";
+    let lastWeekKey = null;
+
+    entries.forEach(entry => {
+        const weekKey = getWeekKey(entry.log_date);
+        if (weekKey && weekKey !== lastWeekKey) {
+            const totals = weekTotals.get(weekKey);
+            html += `<div class="month-total">📅 <strong>${escapeHtml(getWeekLabel(weekKey))}</strong> — Total: ${totals.minutes} min, ${totals.pages} pages</div>`;
+            lastWeekKey = weekKey;
+        }
+
+        const pageStart = Number(entry.page_start) || 0;
+        const pageEnd = Number(entry.page_end) || 0;
+        const pageCount = pageEnd - pageStart + 1;
+
+        html += `<div class="log-entry">
+            <span class="log-date">${escapeHtml(formatLogDate(entry.log_date))}</span>
+            <span class="log-title">📖 <em>${escapeHtml(entry.book_title || "Untitled")}</em></span>
+            <span class="log-stats">${Number(entry.minutes_read) || 0} min &middot; pages ${pageStart}&ndash;${pageEnd} (${pageCount} pages)</span>
+            <span class="log-actions">
+                <button type="button" class="secondary-btn log-edit-btn" data-id="${entry.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; margin-right: 0.25rem;">✏️ Edit</button>
+                <button type="button" class="delete-response-btn log-delete-btn" data-id="${entry.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">🗑 Delete</button>
+            </span>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+document.getElementById("student-log-container")?.addEventListener("click", (e) => {
+    const editBtn = e.target.closest(".log-edit-btn");
+    const deleteBtn = e.target.closest(".log-delete-btn");
+    if (!editBtn && !deleteBtn) return;
+
+    const modal = document.getElementById("student-modal");
+    const modalTitle = document.getElementById("student-modal-title");
+    const modalBody = document.getElementById("student-modal-body");
+    const confirmBtn = document.getElementById("student-modal-confirm-btn");
+
+    const entryId = (editBtn || deleteBtn).dataset.id;
+    const entry = currentStudentLogEntries.find(l => String(l.id) === String(entryId));
+    if (!entry) return;
+
+    if (deleteBtn) {
+        modalTitle.textContent = "Confirm Deletion";
+        modalBody.innerHTML = `<p style="margin:0;">Delete the log entry for <strong>${escapeHtml(entry.book_title || "this book")}</strong> on <strong>${escapeHtml(formatLogDate(entry.log_date))}</strong>?</p>`;
+        confirmBtn.textContent = "Delete Entry";
+        confirmBtn.className = "delete-response-btn";
+
+        pendingRosterAction = async () => {
+            const { error } = await db.from('reading_log').delete().eq('id', entryId);
+            if (!error) {
+                showLogStatus("Log entry deleted.", "success");
+                if (currentSelectedStudent) await loadStudentLog(currentSelectedStudent.name);
+            } else {
+                console.error("Log delete error:", error);
+                showLogStatus("Failed to delete log entry.", "error");
+            }
+        };
+
+        modal.classList.remove("hidden");
+    }
+
+    if (editBtn) {
+        modalTitle.textContent = "Edit Log Entry";
+        modalBody.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Date</label>
+          <input type="date" id="edit-log-date" value="${escapeHtml(entry.log_date || "")}" style="width:100%; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Title</label>
+          <input type="text" id="edit-log-title" value="${escapeHtml(entry.book_title || "")}" style="width:100%; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Time Read (minutes)</label>
+          <input type="number" id="edit-log-time" min="1" value="${Number(entry.minutes_read) || ""}" style="width:100%; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+        </div>
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.25rem;">Pages Read</label>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="color: var(--muted); font-size: 0.9rem;">from page</span>
+            <input type="number" id="edit-log-page-start" min="1" value="${Number(entry.page_start) || ""}" style="width:5.5rem; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+            <span style="color: var(--muted); font-size: 0.9rem;">to page</span>
+            <input type="number" id="edit-log-page-end" min="1" value="${Number(entry.page_end) || ""}" style="width:5.5rem; padding:0.5rem; border:1px solid var(--border); border-radius:4px;">
+          </div>
+        </div>
+      </div>
+    `;
+        confirmBtn.textContent = "Save Changes";
+        confirmBtn.className = "";
+
+        pendingRosterAction = async () => {
+            const newDate = document.getElementById("edit-log-date").value;
+            const newTitle = document.getElementById("edit-log-title").value.trim();
+            const newTime = Number(document.getElementById("edit-log-time").value);
+            const newStart = Number(document.getElementById("edit-log-page-start").value);
+            const newEnd = Number(document.getElementById("edit-log-page-end").value);
+
+            if (!newDate || !newTitle || !newTime || !newStart || !newEnd) return;
+
+            if (newEnd < newStart) {
+                showLogStatus("The ending page must be the same as or after the starting page.", "error");
+                return;
+            }
+
+            const { error } = await db
+                .from('reading_log')
+                .update({
+                    log_date: newDate,
+                    book_title: newTitle,
+                    minutes_read: newTime,
+                    page_start: newStart,
+                    page_end: newEnd
+                })
+                .eq('id', entryId);
+
+            if (!error) {
+                showLogStatus("Log entry updated.", "success");
+                if (currentSelectedStudent) await loadStudentLog(currentSelectedStudent.name);
+            } else {
+                console.error("Log update error:", error);
+                showLogStatus("Failed to update log entry.", "error");
+            }
+        };
+
+        modal.classList.remove("hidden");
+    }
+});
+
 // ==========================================
 // 4. TEACHER AUTHENTICATION & DASHBOARD
 // ==========================================
+function openPasscodeModal() {
+    document.getElementById("passcode-modal").classList.remove("hidden");
+    document.getElementById("passcode-input").focus();
+}
+
 async function verifyTeacherPasscode(inputPasscode) {
     try {
         const { data, error } = await db
@@ -424,8 +697,10 @@ async function handleTeacherLogin() {
         activePasscode = passcode;
         errorText.classList.add("hidden");
         document.getElementById("passcode-modal").classList.add("hidden");
+        document.getElementById("login-view").classList.add("hidden");
         document.getElementById("student-view").classList.add("hidden");
         document.getElementById("teacher-view").classList.remove("hidden");
+        document.getElementById("teacher-access-btn").classList.add("invisible");
         document.getElementById("passcode-input").value = "";
         await loadTeacherResponses();
     } else {
@@ -437,7 +712,8 @@ async function handleTeacherLogin() {
 function handleLogout() {
     activePasscode = "";
     document.getElementById("teacher-view").classList.add("hidden");
-    document.getElementById("student-view").classList.remove("hidden");
+    document.getElementById("login-view").classList.remove("hidden");
+    document.getElementById("teacher-access-btn").classList.add("invisible");
 }
 
 async function loadTeacherResponses() {
@@ -781,7 +1057,7 @@ async function handleResetPasscode() {
         document.getElementById("reset-new-passcode-input").value = "";
         document.getElementById("reset-passcode-modal").classList.add("hidden");
         showStatus("Passcode reset successfully! You can now log in with your new passcode.", "success");
-        document.getElementById("passcode-modal").classList.remove("hidden");
+        openPasscodeModal();
     } else {
         console.error("Reset passcode error:", error);
         errText.textContent = "Failed to reset passcode in database.";
@@ -794,6 +1070,7 @@ async function handleResetPasscode() {
 // ==========================================
 
 let currentStudentRecords = [];
+let currentStudentLogEntries = [];
 
 async function loadStudentHistory(studentName) {
     const panel = document.getElementById("student-history-panel");
@@ -803,9 +1080,14 @@ async function loadStudentHistory(studentName) {
 
     if (!panel || !container) return;
 
+    // Auto-collapse the history list when the panel first appears for a newly
+    // selected student; refreshes (edit/delete) preserve the current toggle state.
+    const isFirstLoad = panel.classList.contains("hidden");
     panel.classList.remove("hidden");
-    container.classList.remove("hidden");
-    if (toggleBtn) toggleBtn.textContent = "Hide";
+    if (isFirstLoad) {
+        container.classList.add("hidden");
+        if (toggleBtn) toggleBtn.textContent = "Show";
+    }
 
     container.innerHTML = "<p>Loading your past submissions...</p>";
 
@@ -968,7 +1250,7 @@ function renderRoster() {
     studentsData.forEach(student => {
         html += `
       <tr style="border-bottom: 1px solid var(--border);">
-        <td style="padding: 0.5rem;"><strong>${escapeHtml(student.name)}</strong></td>
+        <td style="padding: 0.5rem;"><button type="button" class="student-name-link" data-name="${escapeHtml(student.name)}"><strong>${escapeHtml(student.name)}</strong></button></td>
         <td style="padding: 0.5rem;"><span class="badge">${escapeHtml(student.grade)}</span></td>
         <td style="padding: 0.5rem; text-align: right;">
           <button type="button" class="secondary-btn edit-student-btn" data-id="${student.id}" data-name="${escapeHtml(student.name)}" data-grade="${escapeHtml(student.grade)}" style="padding: 0.2rem 0.5rem; font-size: 0.85rem; margin-right: 0.25rem;">✏️ Edit</button>
@@ -981,11 +1263,177 @@ function renderRoster() {
     container.innerHTML = html;
 }
 
+// ==========================================
+// 6b. TEACHER STUDENT DETAIL VIEW
+// ==========================================
+async function openStudentDetail(studentName) {
+    document.getElementById("teacher-view").classList.add("hidden");
+    document.getElementById("student-detail-view").classList.remove("hidden");
+    document.getElementById("student-detail-name").textContent = studentName;
+
+    const logContainer = document.getElementById("detail-log-container");
+    const respContainer = document.getElementById("detail-responses-container");
+    logContainer.innerHTML = "<p>Loading reading log...</p>";
+    respContainer.innerHTML = "<p>Loading responses...</p>";
+
+    const [logResult, respResult] = await Promise.all([
+        db.from('reading_log').select('*').eq('student_name', studentName).order('log_date', { ascending: false }),
+        db.from('reading_responses').select('*').eq('student_name', studentName).order('created_at', { ascending: false })
+    ]);
+
+    if (logResult.error) {
+        console.error("Reading log fetch error:", logResult.error);
+        logContainer.innerHTML = "<p>Unable to load reading log.</p>";
+    } else {
+        renderStudentLog(logResult.data || []);
+    }
+
+    if (respResult.error) {
+        console.error("Student responses fetch error:", respResult.error);
+        respContainer.innerHTML = "<p>Unable to load responses.</p>";
+    } else {
+        renderStudentDetailResponses(respResult.data || []);
+    }
+}
+
+function renderStudentLog(entries) {
+    const container = document.getElementById("detail-log-container");
+
+    if (entries.length === 0) {
+        container.innerHTML = "<p style='color: var(--muted); font-size: 0.9rem;'>No reading log entries yet.</p>";
+        return;
+    }
+
+    const weekTotals = new Map();
+    entries.forEach(entry => {
+        const key = getWeekKey(entry.log_date);
+        if (!key) return;
+        const totals = weekTotals.get(key) || { minutes: 0, pages: 0 };
+        totals.minutes += Number(entry.minutes_read) || 0;
+        totals.pages += (Number(entry.page_end) || 0) - (Number(entry.page_start) || 0) + 1;
+        weekTotals.set(key, totals);
+    });
+
+    let html = "";
+    let lastWeekKey = null;
+
+    entries.forEach(entry => {
+        const weekKey = getWeekKey(entry.log_date);
+        if (weekKey && weekKey !== lastWeekKey) {
+            const totals = weekTotals.get(weekKey);
+            html += `<div class="month-total">📅 <strong>${escapeHtml(getWeekLabel(weekKey))}</strong> — Total: ${totals.minutes} min, ${totals.pages} pages</div>`;
+            lastWeekKey = weekKey;
+        }
+
+        const dateLabel = formatLogDate(entry.log_date);
+        const pageStart = Number(entry.page_start) || 0;
+        const pageEnd = Number(entry.page_end) || 0;
+        const pageCount = pageEnd - pageStart + 1;
+
+        html += `<div class="log-entry">
+            <span class="log-date">${escapeHtml(dateLabel)}</span>
+            <span class="log-title">📖 <em>${escapeHtml(entry.book_title || "Untitled")}</em></span>
+            <span class="log-stats">${Number(entry.minutes_read) || 0} min &middot; pages ${pageStart}&ndash;${pageEnd} (${pageCount} pages)</span>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function getWeekKey(dateStr) {
+    const parts = String(dateStr || "").split("-").map(Number);
+    if (parts.length < 3 || parts.some(isNaN)) return null;
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    date.setDate(date.getDate() - date.getDay()); // Sunday of this week
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getWeekLabel(weekKey) {
+    const [year, month, day] = weekKey.split("-").map(Number);
+    const start = new Date(year, month - 1, day);
+    const end = new Date(year, month - 1, day + 6);
+    return `Week of ${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
+function formatLogDate(dateStr) {
+    const parts = String(dateStr || "").split("-").map(Number);
+    if (parts.length < 3 || parts.some(isNaN)) return String(dateStr || "");
+    return new Date(parts[0], parts[1] - 1, parts[2]).toLocaleDateString();
+}
+
+function renderStudentDetailResponses(responses) {
+    const container = document.getElementById("detail-responses-container");
+
+    if (responses.length === 0) {
+        container.innerHTML = "<p>No responses submitted yet.</p>";
+        return;
+    }
+
+    container.innerHTML = "";
+
+    responses.forEach(resp => {
+        const card = document.createElement("div");
+        card.className = "response-card";
+
+        let formattedDate = "N/A";
+        const rawDate = resp.created_at || resp.timestamp;
+        if (rawDate) {
+            const parsed = new Date(rawDate);
+            formattedDate = !isNaN(parsed.getTime())
+                ? parsed.toLocaleDateString()
+                : String(rawDate).split("T").at(0);
+        }
+
+        const responseId = resp.id || "";
+        const bTitle = resp.book_title || "Untitled Book";
+        const bAuthor = resp.book_author ? ` by ${resp.book_author}` : "";
+        const p1Title = resp.prompt1_title || "Prompt 1";
+        const p1Description = getPromptDescription(p1Title, resp.grade_level);
+        const p2Title = resp.prompt2_title || "Prompt 2";
+        const p2Description = getPromptDescription(p2Title, resp.grade_level);
+        const r1Text = resp.response1 || "No response provided.";
+        const r2Text = resp.response2 || "No response provided.";
+
+        // Ungraded responses get the same rubric + comment controls as the dashboard
+        const eval1 = resp.score1 != null
+            ? `<p class="detail-score">Score: ${escapeHtml(String(resp.score1))}</p>`
+            : renderRubricRow(responseId, 1, resp.score1) + renderCommentBlock(responseId, 1, resp.comment1);
+        const eval2 = resp.score2 != null
+            ? `<p class="detail-score">Score: ${escapeHtml(String(resp.score2))}</p>`
+            : renderRubricRow(responseId, 2, resp.score2) + renderCommentBlock(responseId, 2, resp.comment2);
+
+        card.innerHTML = `
+      <div class="card-header">
+        <span class="date">${escapeHtml(formattedDate)}</span>
+      </div>
+      <p class="book-info">📖 <em>${escapeHtml(bTitle)}</em>${escapeHtml(bAuthor)}</p>
+      <div class="resp-block">
+        <strong${p1Description ? ` class="prompt-title-tooltip" data-tooltip="${escapeHtml(p1Description)}"` : ""}>${escapeHtml(p1Title)}</strong>
+        <p>${escapeHtml(r1Text)}</p>
+        ${eval1}
+      </div>
+      <div class="resp-block">
+        <strong${p2Description ? ` class="prompt-title-tooltip" data-tooltip="${escapeHtml(p2Description)}"` : ""}>${escapeHtml(p2Title)}</strong>
+        <p>${escapeHtml(r2Text)}</p>
+        ${eval2}
+      </div>
+    `;
+
+        container.appendChild(card);
+    });
+}
+
 // Roster Modal Action State
 let pendingRosterAction = null;
 
 // Handle Edit and Delete Clicks with Custom Modal (No System Popups)
 document.getElementById("roster-container")?.addEventListener("click", (e) => {
+    const nameLink = e.target.closest(".student-name-link");
+    if (nameLink) {
+        openStudentDetail(nameLink.dataset.name);
+        return;
+    }
+
     const deleteBtn = e.target.closest(".delete-student-btn");
     const editBtn = e.target.closest(".edit-student-btn");
 

@@ -38,6 +38,96 @@ main {
     padding: 0 1rem;
 }
 
+/* Two-column student view needs more horizontal room */
+main:has(#student-view:not(.hidden)) {
+    max-width: 1200px;
+}
+
+.student-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+}
+
+.pages-range {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.pages-range input {
+    width: 5.5rem;
+}
+
+/* Teacher Student Detail View */
+.student-name-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--primary);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.student-name-link:hover {
+    background: none;
+    text-decoration: underline;
+}
+
+.month-total {
+    margin-top: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    background: #e0e7ff;
+    color: #3730a3;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.log-entry {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-entry .log-date {
+    color: var(--muted);
+    min-width: 6rem;
+}
+
+.log-entry .log-stats {
+    margin-left: auto;
+    color: var(--muted);
+}
+
+.log-entry .log-actions {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.detail-score {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+@media (max-width: 900px) {
+    .student-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
 .view-section {
     background: var(--card-bg);
     padding: 2rem;
@@ -49,6 +139,38 @@ main {
     color: var(--muted);
     margin-top: -0.5rem;
     margin-bottom: 1.5rem;
+}
+
+/* Login View */
+#login-view {
+    max-width: 420px;
+    margin: 2rem auto;
+    text-align: center;
+}
+
+#login-view .login-student-group {
+    text-align: left;
+    margin-top: 1.5rem;
+}
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 1.5rem 0;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--border);
+}
+
+#login-teacher-btn {
+    width: 100%;
 }
 
 form {
@@ -405,6 +527,10 @@ button:disabled {
 
 .hidden {
     display: none !important;
+}
+
+.invisible {
+    visibility: hidden;
 }
 
 .error-text {

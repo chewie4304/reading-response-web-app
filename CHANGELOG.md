@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-08
+
+### Added
+- Added a login landing page shown at launch that requests the student name (with the same type-ahead search, keyboard navigation, and selection behavior as the response form) or offers a **Teacher Login** button that opens the Teacher Access passcode modal.
+- The Teacher Access passcode field now receives keyboard focus automatically whenever the modal opens.
+- Teachers can now click a student's name in the Class Roster to open a detail view showing that student's reading responses and reading log entries, with per-week totals for time read and pages read. Ungraded responses in the detail view include the same rubric scoring and teacher comment controls as the main dashboard, and prompt titles show the same hover tooltips with full prompt text.
+- The header **Teacher Login** button is now hidden while the teacher is logged in and on the login screen, and reappears when a student is viewing the response form. It now hides via `visibility` so the blue header keeps a consistent height across all views.
+- Reordered the student view after login: student name at the top, then the Past Submissions & Feedback panel (now auto-collapsed with a **Show**/**Hide** toggle that updates its label), then a new **New Entry** section beginning with the book title.
+- Split the student screen into two columns: a new **Reading Log** column on the left (date, title, time read, and a pages-read range "from page __ to page __", saved to a `reading_log` Supabase table) and the **Reading Response** column on the right. Columns stack into one on narrow screens.
+- Students can now view their own reading log entries in a collapsible **My Reading Log** panel, and edit or delete any entry via modal dialogs. Entries are grouped by week with per-week totals for time read and pages read.
+
+### Changed
+- Teacher logout now returns to the login page instead of the student submission form.
+
 ## [1.2.1] - 2026-10-12
 
 ### Fixed

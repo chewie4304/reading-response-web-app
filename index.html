@@ -6,95 +6,181 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Reading Responses</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="styles.css?v=20261005-prompt-tooltip">
+    <link rel="stylesheet" href="styles.css?v=20261108-v1.3.0">
 </head>
 
 <body>
     <header>
         <h1>Reading Response Portal</h1>
-        <button id="teacher-access-btn">Teacher Login</button>
+        <button id="teacher-access-btn" class="invisible">Teacher Login</button>
     </header>
 
     <main>
+        <!-- Login View (shown at launch) -->
+        <section id="login-view" class="view-section">
+            <h2>Welcome!</h2>
+            <p class="subtitle">Sign in with your name, or log in as a teacher.</p>
+
+            <div class="form-group login-student-group">
+                <label for="login-student-name">Student Name</label>
+                <input type="text" id="login-student-name" placeholder="Start typing your name..." autocomplete="off">
+                <div id="login-student-suggestions" class="suggestions-box hidden"></div>
+            </div>
+
+            <div class="login-divider"><span>or</span></div>
+
+            <button id="login-teacher-btn" type="button" class="secondary-btn">Teacher Login</button>
+        </section>
+
         <!-- Student Submission View -->
-        <section id="student-view" class="view-section">
+        <section id="student-view" class="view-section hidden">
             <h2>Submit Weekly Reading Response</h2>
             <p class="subtitle">Complete two prompt responses for your assigned grade level.</p>
+
+            <!-- Student Selection -->
+            <div class="form-group">
+                <label for="student-name">Student Name</label>
+                <input type="text" id="student-name" placeholder="Start typing your name..." required
+                    autocomplete="off">
+                <div id="student-suggestions" class="suggestions-box hidden"></div>
+                <span id="grade-badge" class="badge hidden"></span>
+            </div>
 
             <!-- Student History & Feedback Panel -->
             <div id="student-history-panel" class="panel hidden" style="margin-top: 1rem; margin-bottom: 1.5rem;">
                 <div class="dashboard-controls" style="margin-bottom: 0.5rem;">
                     <h3>📋 My Past Submissions & Feedback (<span id="history-count">0</span>)</h3>
                     <button id="toggle-history-btn" type="button" class="secondary-btn"
-                        style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Show / Hide</button>
+                        style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Show</button>
                 </div>
-                <div id="history-container" class="responses-list" style="margin-top: 0.75rem;">
+                <div id="history-container" class="responses-list hidden" style="margin-top: 0.75rem;">
                     <p>Select your name to load past submissions...</p>
                 </div>
             </div>
 
-            <form id="response-form">
-                <!-- Student Selection -->
-                <div class="form-group">
-                    <label for="student-name">Student Name</label>
-                    <input type="text" id="student-name" placeholder="Start typing your name..." required
-                        autocomplete="off">
-                    <div id="student-suggestions" class="suggestions-box hidden"></div>
-                    <span id="grade-badge" class="badge hidden"></span>
+            <div class="student-columns">
+                <!-- Reading Log Column -->
+                <div class="student-column">
+                    <h3 style="margin-top: 0;">Reading Log</h3>
+
+                    <!-- Student Reading Log Entries Panel -->
+                    <div id="student-log-panel" class="panel hidden" style="margin-bottom: 1rem;">
+                        <div class="dashboard-controls" style="margin-bottom: 0.5rem;">
+                            <h3 style="margin: 0;">📖 My Reading Log (<span id="log-count">0</span>)</h3>
+                            <button id="toggle-log-btn" type="button" class="secondary-btn"
+                                style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Show</button>
+                        </div>
+                        <div id="student-log-container" class="hidden" style="margin-top: 0.75rem;">
+                            <p>Select your name to load your reading log...</p>
+                        </div>
+                    </div>
+
+                    <form id="reading-log-form">
+                        <div class="form-group">
+                            <label for="log-date">Date</label>
+                            <input type="date" id="log-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="log-title">Title</label>
+                            <input type="text" id="log-title" placeholder="Title of the book" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="log-time">Time Read (minutes)</label>
+                            <input type="number" id="log-time" min="1" placeholder="e.g. 20" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pages Read</label>
+                            <div class="pages-range">
+                                <span>from page</span>
+                                <input type="number" id="log-page-start" min="1" placeholder="24" required>
+                                <span>to page</span>
+                                <input type="number" id="log-page-end" min="1" placeholder="38" required>
+                            </div>
+                        </div>
+                        <button type="submit" id="log-submit-btn">Add Log Entry</button>
+                    </form>
+                    <div id="log-status-message" class="status-box hidden"></div>
                 </div>
 
-                <!-- Book Details -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="book-title">Book Title</label>
-                        <input type="text" id="book-title" placeholder="Title of the book" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="book-author">Author</label>
-                        <input type="text" id="book-author" placeholder="Author name" required>
-                    </div>
+                <!-- Reading Response Column -->
+                <div class="student-column">
+                    <form id="response-form">
+                        <h3 style="margin: 0;">New Entry</h3>
+
+                        <!-- Book Details -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="book-title">Book Title</label>
+                                <input type="text" id="book-title" placeholder="Title of the book" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="book-author">Author</label>
+                                <input type="text" id="book-author" placeholder="Author name" required>
+                            </div>
+                        </div>
+
+                        <hr class="divider">
+
+                        <!-- Response 1 -->
+                        <div class="prompt-block">
+                            <h3>Response 1</h3>
+                            <div class="form-group">
+                                <label for="prompt1-select">Select First Prompt</label>
+                                <select id="prompt1-select" required disabled>
+                                    <option value="">-- Select your student name first --</option>
+                                </select>
+                            </div>
+                            <p id="prompt1-text" class="prompt-description hidden"></p>
+                            <div class="form-group">
+                                <textarea id="response1-text" rows="4"
+                                    placeholder="Write your response to Prompt 1 here..." required disabled></textarea>
+                            </div>
+                        </div>
+
+                        <hr class="divider">
+
+                        <!-- Response 2 -->
+                        <div class="prompt-block">
+                            <h3>Response 2</h3>
+                            <div class="form-group">
+                                <label for="prompt2-select">Select Second Prompt</label>
+                                <select id="prompt2-select" required disabled>
+                                    <option value="">-- Select your student name first --</option>
+                                </select>
+                            </div>
+                            <p id="prompt2-text" class="prompt-description hidden"></p>
+                            <div class="form-group">
+                                <textarea id="response2-text" rows="4"
+                                    placeholder="Write your response to Prompt 2 here..." required disabled></textarea>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="submit-btn" disabled>Submit Weekly Responses</button>
+                    </form>
                 </div>
-
-                <hr class="divider">
-
-                <!-- Response 1 -->
-                <div class="prompt-block">
-                    <h3>Response 1</h3>
-                    <div class="form-group">
-                        <label for="prompt1-select">Select First Prompt</label>
-                        <select id="prompt1-select" required disabled>
-                            <option value="">-- Select your student name first --</option>
-                        </select>
-                    </div>
-                    <p id="prompt1-text" class="prompt-description hidden"></p>
-                    <div class="form-group">
-                        <textarea id="response1-text" rows="4" placeholder="Write your response to Prompt 1 here..."
-                            required disabled></textarea>
-                    </div>
-                </div>
-
-                <hr class="divider">
-
-                <!-- Response 2 -->
-                <div class="prompt-block">
-                    <h3>Response 2</h3>
-                    <div class="form-group">
-                        <label for="prompt2-select">Select Second Prompt</label>
-                        <select id="prompt2-select" required disabled>
-                            <option value="">-- Select your student name first --</option>
-                        </select>
-                    </div>
-                    <p id="prompt2-text" class="prompt-description hidden"></p>
-                    <div class="form-group">
-                        <textarea id="response2-text" rows="4" placeholder="Write your response to Prompt 2 here..."
-                            required disabled></textarea>
-                    </div>
-                </div>
-
-                <button type="submit" id="submit-btn" disabled>Submit Weekly Responses</button>
-            </form>
+            </div>
 
             <div id="status-message" class="status-box hidden"></div>
+        </section>
+
+        <!-- Teacher Student Detail View -->
+        <section id="student-detail-view" class="view-section hidden">
+            <div class="teacher-header">
+                <h2 id="student-detail-name">Student</h2>
+                <button id="back-to-dashboard-btn" class="secondary-btn">← Back to Dashboard</button>
+            </div>
+
+            <div class="panel">
+                <h3 style="margin-top: 0;">📖 Reading Log</h3>
+                <div id="detail-log-container">
+                    <p>Loading reading log...</p>
+                </div>
+            </div>
+
+            <h3>Reading Responses</h3>
+            <div id="detail-responses-container" class="responses-list">
+                <p>Loading responses...</p>
+            </div>
         </section>
 
         <!-- Protected Teacher Dashboard View -->
@@ -292,7 +378,7 @@
     <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Main Application Script -->
-    <script src="app.js?v=20261005-prompt-tooltip"></script>
+    <script src="app.js?v=20261108-v1.3.0"></script>
 </body>
 
 </html>
