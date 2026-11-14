@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function initApp() {
     bindEvents();
+    initRealtime();
     await loadInitialData();
 }
 
@@ -51,6 +52,162 @@ async function loadInitialData() {
         console.error("Initial data load error:", err);
         showStatus("Error connecting to database server.", "error");
     }
+}
+
+// ==========================================
+// 1b. REALTIME LIVE UPDATES
+// ==========================================
+// Requires the reading_responses and reading_log tables to be added to the
+// supabase_realtime publication (Supabase Dashboard > Database > Replication, or:
+// alter publication supabase_realtime add table public.reading_responses;
+// alter publication supabase_realtime add table public.reading_log;)
+let teacherRefreshTimer = null;
+
+// Each table gets its own channel: stacking multiple postgres_changes bindings
+// on one channel silently stops event delivery.
+function initRealtime() {
+    subscribeTable("reading-responses-live", "reading_responses", handleRealtimeResponseChange);
+    subscribeTable("reading-log-live", "reading_log", handleRealtimeLogChange);
+}
+
+function subscribeTable(channelName, table, handler) {
+    db.channel(channelName)
+        .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: table },
+            handler
+        )
+        .subscribe((status) => {
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                console.error("Realtime subscription error:", status);
+            }
+        });
+}
+
+function isViewVisible(viewId) {
+    const view = document.getElementById(viewId);
+    return !!view && !view.classList.contains("hidden");
+}
+
+function handleRealtimeResponseChange(payload) {
+    const changedStudent = (payload.new && payload.new.student_name) ||
+        (payload.old && payload.old.student_name) || "";
+
+    if (isViewVisible("teacher-view")) {
+        scheduleTeacherRefresh();
+    }
+
+    if (isViewVisible("student-detail-view")) {
+        const nameEl = document.getElementById("student-detail-name");
+        const detailName = nameEl ? nameEl.textContent.trim() : "";
+        // payload.old only carries the primary key on DELETE, so refresh when unsure
+        if (detailName && (!changedStudent || changedStudent === detailName)) {
+            openStudentDetail(detailName);
+        }
+    }
+
+    if (isViewVisible("student-view") && currentSelectedStudent &&
+        changedStudent === currentSelectedStudent.name) {
+        refreshSelectedStudentData(payload.eventType);
+    }
+}
+
+function handleRealtimeLogChange(payload) {
+    const changedStudent = (payload.new && payload.new.student_name) ||
+        (payload.old && payload.old.student_name) || "";
+
+    if (isViewVisible("student-detail-view")) {
+        const nameEl = document.getElementById("student-detail-name");
+        const detailName = nameEl ? nameEl.textContent.trim() : "";
+        // payload.old only carries the primary key on DELETE, so refresh when unsure
+        if (detailName && (!changedStudent || changedStudent === detailName)) {
+            openStudentDetail(detailName);
+        }
+    }
+
+    if (isViewVisible("student-view") && currentSelectedStudent &&
+        changedStudent === currentSelectedStudent.name) {
+        loadStudentLog(currentSelectedStudent.name);
+    }
+}
+
+// Debounce so a burst of submissions only triggers one re-render
+function scheduleTeacherRefresh() {
+    clearTimeout(teacherRefreshTimer);
+    teacherRefreshTimer = setTimeout(refreshTeacherDashboardLive, 500);
+}
+
+async function refreshTeacherDashboardLive() {
+    const drafts = captureUnsavedCommentDrafts();
+    const scrollY = window.scrollY;
+    await loadTeacherResponses({ silent: true });
+    restoreUnsavedCommentDrafts(drafts);
+    window.scrollTo(0, scrollY);
+}
+
+// A live re-render rebuilds response cards, so carry over any comments the
+// teacher was still typing and re-mark them as "Not Saved".
+function captureUnsavedCommentDrafts() {
+    const drafts = [];
+    document.querySelectorAll("#responses-container .comment-textarea").forEach(textarea => {
+        if (textarea.value.trim() !== (textarea.dataset.savedComment || "").trim()) {
+            drafts.push({
+                responseId: textarea.dataset.responseId,
+                promptNum: textarea.dataset.promptNum,
+                value: textarea.value
+            });
+        }
+    });
+    return drafts;
+}
+
+function restoreUnsavedCommentDrafts(drafts) {
+    const textareas = Array.from(document.querySelectorAll("#responses-container .comment-textarea"));
+    drafts.forEach(draft => {
+        const textarea = textareas.find(t =>
+            t.dataset.responseId === draft.responseId && t.dataset.promptNum === draft.promptNum);
+        if (!textarea) return;
+        textarea.value = draft.value;
+        const status = textarea.closest(".comment-block")?.querySelector(".comment-status");
+        if (status) {
+            status.textContent = "Not Saved";
+            status.classList.add("not-saved");
+            status.classList.remove("save-error");
+        }
+    });
+}
+
+async function refreshSelectedStudentData(eventType) {
+    const studentName = currentSelectedStudent.name;
+
+    if (eventType === "INSERT") {
+        // A new submission (e.g., from another device) can change cooldown locks
+        const { data: history } = await db
+            .from('reading_responses')
+            .select('*')
+            .eq('student_name', studentName);
+        recentSubmissionsData = history || [];
+
+        if (currentSelectedStudent.grade) {
+            const p1Select = document.getElementById("prompt1-select");
+            const p2Select = document.getElementById("prompt2-select");
+            const prev1 = p1Select.value;
+            const prev2 = p2Select.value;
+            populateGradePrompts(currentSelectedStudent.grade);
+            restorePromptSelection(p1Select, prev1);
+            restorePromptSelection(p2Select, prev2);
+            handlePromptSelect(1);
+            handlePromptSelect(2);
+        }
+    }
+
+    loadStudentHistory(studentName);
+}
+
+function restorePromptSelection(selectEl, previousValue) {
+    if (!previousValue) return;
+    const option = Array.from(selectEl.options).find(opt => opt.value === previousValue && !opt.disabled);
+    selectEl.value = option ? previousValue : "";
 }
 
 // ==========================================
@@ -716,8 +873,8 @@ function handleLogout() {
     document.getElementById("teacher-access-btn").classList.add("invisible");
 }
 
-async function loadTeacherResponses() {
-    showStatus("Loading student responses...", "info");
+async function loadTeacherResponses(options = {}) {
+    if (!options.silent) showStatus("Loading student responses...", "info");
 
     const { data: responses, error } = await db
         .from('reading_responses')

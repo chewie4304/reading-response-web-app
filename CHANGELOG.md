@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Live updates via Supabase Realtime: new, edited, or deleted reading responses and reading log entries now appear automatically without refreshing the page. The Teacher Dashboard re-renders in place (preserving scroll position and any unsaved comment drafts), the teacher's per-student detail view reloads (including reading log entries), and a logged-in student's Past Submissions & Feedback and My Reading Log panels update the moment a teacher scores or comments on their work. Requires the `reading_responses` and `reading_log` tables to be added to the `supabase_realtime` publication (Supabase Dashboard > Database > Replication, or `alter publication supabase_realtime add table public.reading_responses; alter publication supabase_realtime add table public.reading_log;`).
+
 ## [1.3.0] - 2026-11-08
 
 ### Added
